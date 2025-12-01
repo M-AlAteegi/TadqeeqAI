@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment
+.env
+.venv
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific - intermediate files
+clean_knowledge_base_v2.json
+app.py
+sharia_guide_llama.py
+test_embeddings.py
+
+# Large files (optional - uncomment if you don't want to push these)
+# chroma_db/
+# raw_pdfs/
+# knowledge_base_english.json
+
+# Custom icons
+trameez_capital_logo.ico
+*.ico
