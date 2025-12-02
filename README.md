@@ -14,15 +14,28 @@ A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-b
 
 | Version | Changes | Performance |
 |---------|---------|-------------|
-| **v1.1** (Current) | Optimized retrieval from 5 → 3 articles | **70s → 20s** (71% faster) |
+| **v1.2** (Current) | Upgraded to Qwen 2.5 7B model | **20s → 13s** (35% faster) |
+| v1.1 | Optimized retrieval from 5 → 3 articles | 70s → 20s (71% faster) |
 | v1.0 | Initial release | ~70s response time |
 
-### What's New in v1.1
+### What's New in v1.2
 
-- **Retrieval Optimization**: Reduced retrieved articles from 5 to 3
-- **Performance Boost**: Response time improved from ~70 seconds to ~20 seconds (71% faster)
-- **Same Accuracy**: Testing confirmed 3 articles provide complete answers without information loss
-- **Leaner Prompts**: Smaller context window = faster LLM processing
+- **Model Upgrade**: Switched from Llama 3.1 8B to Qwen 2.5 7B
+- **Faster Responses**: Query time reduced from ~20s to ~13s (35% improvement)
+- **Better Formatting**: Cleaner numbered lists and structured output
+- **Improved Citations**: More precise article references
+- **Cumulative Improvement**: From v1.0 to v1.2, response time improved by **81%** (70s → 13s)
+
+### Why Qwen 2.5 7B?
+
+After benchmarking multiple models (Llama 3.1, Mistral, Gemma 2, Qwen 2.5), Qwen 2.5 7B emerged as the best choice:
+
+| Model | Response Time | Accuracy | Formatting |
+|-------|---------------|----------|------------|
+| Llama 3.1 8B | 20s | ✅ Complete | Good |
+| Mistral 7B | 20s | ✅ Complete | Good |
+| Gemma 2 9B | 30s | ⚠️ Missed details | Good |
+| **Qwen 2.5 7B** | **13s** | ✅ Complete | **Excellent** |
 
 ---
 
@@ -100,7 +113,7 @@ ShariaGuide is a **grounded AI assistant** that:
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                     LOCAL LLM (Llama 3.1 8B)                    │
+│                   LOCAL LLM (Qwen 2.5 7B)                       │
 │            Generates answer from retrieved context              │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
@@ -120,7 +133,7 @@ ShariaGuide is a **grounded AI assistant** that:
 | **PDF Processing** | PyMuPDF (fitz) |
 | **Embeddings** | Sentence-Transformers (all-MiniLM-L6-v2) |
 | **Vector Database** | ChromaDB |
-| **LLM** | Llama 3.1 8B via Ollama |
+| **LLM** | Qwen 2.5 7B via Ollama |
 | **Desktop UI** | PyWebView |
 | **Language** | Python 3.12+ |
 
@@ -128,13 +141,13 @@ ShariaGuide is a **grounded AI assistant** that:
 
 ## 📊 Performance
 
-| Metric | v1.0 | v1.1 |
-|--------|------|------|
-| Documents Indexed | 142 | 142 |
-| Articles Retrieved | 5 | **3** |
-| Average Query Time | ~70s | **~20s** |
-| Embedding Dimensions | 384 | 384 |
-| Model | Llama 3.1 8B | Llama 3.1 8B |
+| Metric | v1.0 | v1.1 | v1.2 |
+|--------|------|------|------|
+| Documents Indexed | 142 | 142 | 142 |
+| Articles Retrieved | 5 | 3 | 3 |
+| Average Query Time | ~70s | ~20s | **~13s** |
+| Model | Llama 3.1 8B | Llama 3.1 8B | **Qwen 2.5 7B** |
+| Output Quality | Good | Good | **Excellent** |
 
 ---
 
@@ -156,7 +169,7 @@ cd ShariaGuide
 pip install sentence-transformers chromadb pywebview requests pymupdf
 
 # Download the LLM
-ollama pull llama3.1
+ollama pull qwen2.5:7b
 
 # Run the application
 python ShariaGuide.py
@@ -210,7 +223,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Saudi Arabian Monetary Authority (SAMA) for regulatory documentation
-- Meta AI for Llama 3.1
+- Alibaba Cloud for Qwen 2.5
 - The open-source community for the incredible tools that made this possible
 
 ---

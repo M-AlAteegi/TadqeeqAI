@@ -39,7 +39,7 @@ class ShariaGuideRAG:
         self.client = chromadb.PersistentClient(path="./chroma_db")
         self.collection = self.client.get_collection("sharia_guide")
         self.ollama_url = "http://localhost:11434/api/generate"
-        self.model = "llama3.1"
+        self.model = "qwen2.5:7b"
         print(f"Ready! {self.collection.count()} documents indexed.")
     
     def retrieve(self, query, n_results=5):
@@ -751,7 +751,7 @@ HTML = '''
         <header class="chat-header">
             <div class="model-badge">
                 <span class="dot"></span>
-                <span>llama3.1 8B · RAG Enabled</span>
+                <span>Qwen2.5:7b · RAG Enabled</span>
             </div>
         </header>
 
@@ -811,7 +811,7 @@ HTML = '''
                 if (result.status === 'ready') {
                     isReady = true;
                     statusDot.classList.remove('loading');
-                    statusText.textContent = `Llama 3.1 · ${result.count} documents indexed`;
+                    statusText.textContent = `Qwen2.5 · ${result.count} documents indexed`;
                     userInput.disabled = false;
                     sendBtn.disabled = false;
                     initOverlay.classList.add('hidden');
