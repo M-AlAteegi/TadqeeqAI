@@ -92,7 +92,7 @@ YOUR ANSWER (cite all sources):"""
         return prompt
     
     def query(self, question):
-        docs = self.retrieve(question, n_results=5)
+        docs = self.retrieve(question, n_results=3)
         prompt = self.generate_prompt(question, docs)
         
         try:
