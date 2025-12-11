@@ -1,45 +1,107 @@
+# =============================================================================
+# TadqeeqAI .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
 # Python
+# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-*.egg-info/
-.eggs/
-dist/
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Jupyter
+# -----------------------------------------------------------------------------
+# Virtual Environments
+# -----------------------------------------------------------------------------
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# -----------------------------------------------------------------------------
+# Jupyter Notebooks
+# -----------------------------------------------------------------------------
 .ipynb_checkpoints/
 *.ipynb
 
-# Environment
-.env
-.venv
-venv/
-ENV/
-
-# IDE
+# -----------------------------------------------------------------------------
+# IDE / Editor
+# -----------------------------------------------------------------------------
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.pydevproject
+.settings/
 
-# OS
+# -----------------------------------------------------------------------------
+# OS Generated
+# -----------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Project specific - intermediate files
-clean_knowledge_base_v2.json
-app.py
-sharia_guide_llama.py
-test_embeddings.py
+# -----------------------------------------------------------------------------
+# Project Specific - Development Files (Not needed for runtime)
+# -----------------------------------------------------------------------------
 
-# Large files (optional - uncomment if you don't want to push these)
-# chroma_db/
-# raw_pdfs/
-# knowledge_base_english.json
+# Source data (already embedded in database)
+data/
 
-# Custom icons
-trameez_capital_logo.ico
+# Build scripts (embeddings already built)
+build_embeddings.py
+
+# Old/deprecated files
+main_v2.py
+rag_pipeline.py
+PROJECT_CONTEXT.md
+
+# Development icons
 *.ico
+
+# -----------------------------------------------------------------------------
+# Logs and Temp Files
+# -----------------------------------------------------------------------------
+*.log
+*.tmp
+*.temp
+logs/
+
+# -----------------------------------------------------------------------------
+# Keep These (Do NOT ignore)
+# -----------------------------------------------------------------------------
+# !main.py
+# !requirements.txt
+# !README.md
+# !RELEASE_NOTES.md
+# !LICENSE
+# !chroma_db_v2/
+# !bm25_index.pkl
+# !documents.json
+# !images/

@@ -1,59 +1,64 @@
-# ShariaGuide 🏛️
+# TadqeeqAI 🏛️
 
-### AI-Powered Islamic Finance Regulatory Compliance Assistant
+### AI-Powered Bilingual Islamic Finance Regulatory Compliance Assistant
 
-A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-backed answers to regulatory compliance questions for Saudi Arabian Islamic finance laws.
+A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-backed answers to regulatory compliance questions for Saudi Arabian Islamic finance laws in **both English and Arabic**.
 
 <p align="center">
-  <img src="images/welcome_screen.png" alt="ShariaGuide Welcome Screen" width="800"/>
+  <img src="images/welcome_screen.png" alt="TadqeeqAI Welcome Screen" width="800"/>
 </p>
 
 ---
 
 ## 📋 Version History
 
-| Version | Changes | Performance |
-|---------|---------|-------------|
-| **v1.2** (Current) | Upgraded to Qwen 2.5 7B model | **20s → 13s** (35% faster) |
-| v1.1 | Optimized retrieval from 5 → 3 articles | 70s → 20s (71% faster) |
-| v1.0 | Initial release | ~70s response time |
+| Version | Key Changes | Model |
+|---------|-------------|-------|
+| **v2.0** (Current) | Bilingual EN/AR, Hybrid Search, New UI | Aya 8B |
+| v1.2 | Qwen 2.5 7B upgrade | Qwen 2.5 7B |
+| v1.1 | Optimized retrieval | Llama 3.1 8B |
+| v1.0 | Initial release | Llama 3.1 8B |
 
-### What's New in v1.2
+### What's New in v2.0
 
-- **Model Upgrade**: Switched from Llama 3.1 8B to Qwen 2.5 7B
-- **Faster Responses**: Query time reduced from ~20s to ~13s (35% improvement)
-- **Better Formatting**: Cleaner numbered lists and structured output
-- **Improved Citations**: More precise article references
-- **Cumulative Improvement**: From v1.0 to v1.2, response time improved by **81%** (70s → 13s)
+- **🌍 Bilingual Support**: Full Arabic and English query support
+- **🔍 Hybrid Search**: BM25 (keyword) + Semantic search with RRF fusion
+- **📚 Dual Regulator Coverage**: SAMA + CMA documents (1,350+ articles)
+- **🎯 Smart Routing**: Automatic regulator detection based on query content
+- **🖥️ Redesigned UI**: Modern dark theme with RTL Arabic support
+- **🤖 New LLM**: Aya 8B - optimized for multilingual responses
 
-### Why Qwen 2.5 7B?
+### Why Aya 8B?
 
-After benchmarking multiple models (Llama 3.1, Mistral, Gemma 2, Qwen 2.5), Qwen 2.5 7B emerged as the best choice:
+After extensive testing with Arabic queries, Aya 8B emerged as the best choice:
 
-| Model | Response Time | Accuracy | Formatting |
-|-------|---------------|----------|------------|
-| Llama 3.1 8B | 20s | ✅ Complete | Good |
-| Mistral 7B | 20s | ✅ Complete | Good |
-| Gemma 2 9B | 30s | ⚠️ Missed details | Good |
-| **Qwen 2.5 7B** | **13s** | ✅ Complete | **Excellent** |
+| Model | Arabic Quality | Response Quality | Issue |
+|-------|----------------|------------------|-------|
+| Qwen 2.5 7B | ⚠️ Medium | Good | Chinese character leak on long responses |
+| Llama 3.1 8B | ❌ Poor | Excellent | Bad Arabic generation |
+| Jais 13B | ✅ Excellent | Poor | Truncates responses |
+| **Aya 8B** | ✅ **Excellent** | **Good** | **None** |
 
 ---
 
 ## 🎯 The Problem
 
-Financial institutions in Saudi Arabia face a dual challenge:
-- **Information Overload**: Compliance officers spend 30-40% of their time manually searching through thousands of pages of SAMA regulations and AAOIFI standards
-- **Risk of Hallucination**: Standard AI chatbots fabricate answers, creating compliance and legal risks
-- **Knowledge Silos**: Critical regulatory knowledge is scattered across multiple PDF documents
+Financial institutions in Saudi Arabia face significant challenges:
+- **Dual Language Requirements**: Regulations exist in both Arabic and English
+- **Information Overload**: Thousands of pages across SAMA and CMA regulations
+- **Risk of Hallucination**: Standard AI chatbots fabricate answers
+- **Compliance Risk**: Incorrect regulatory guidance can lead to penalties
 
 ## 💡 The Solution
 
-ShariaGuide is a **grounded AI assistant** that:
-1. **Retrieves** relevant regulatory articles using semantic search
-2. **Generates** answers based ONLY on retrieved documents
-3. **Cites** specific articles for every claim - enabling verification
+TadqeeqAI is a **grounded AI assistant** that:
+1. **Searches** both Arabic and English regulatory documents using hybrid search
+2. **Retrieves** relevant articles with high precision
+3. **Generates** answers based ONLY on retrieved documents
+4. **Cites** specific articles for every claim - enabling verification
+5. **Responds** in the same language as your query
 
-> Unlike ChatGPT, ShariaGuide cannot hallucinate. It only answers from your regulatory documents.
+> Unlike ChatGPT, TadqeeqAI cannot hallucinate. It only answers from your regulatory documents.
 
 ---
 
@@ -61,25 +66,52 @@ ShariaGuide is a **grounded AI assistant** that:
 
 | Feature | Description |
 |---------|-------------|
-| 🔍 **Semantic Search** | Finds relevant articles by meaning, not just keywords |
+| 🌍 **Bilingual** | Query in English or Arabic - get responses in the same language |
+| 🔍 **Hybrid Search** | BM25 + Semantic search with Reciprocal Rank Fusion |
+| 📊 **Dual Regulators** | SAMA (finance companies) + CMA (capital markets) coverage |
 | 📄 **Source Citations** | Every answer references specific Articles and documents |
-| 🖥️ **Desktop Application** | Native app experience - no browser needed |
-| 🔒 **Fully Local** | All data stays on your machine - no cloud APIs required |
-| ⚡ **Fast Retrieval** | Vector embeddings enable sub-second document search |
+| 🎯 **Smart Detection** | Automatically routes queries to relevant regulator |
+| 🖥️ **Desktop App** | Native experience with modern dark UI |
+| 🔒 **Fully Local** | All data stays on your machine - no cloud APIs |
 
 ---
 
 ## 🖼️ Screenshots
 
-### Query in Progress
+### English Query Response
 <p align="center">
-  <img src="images/query_loading.png" alt="Loading State" width="800"/>
+  <img src="images/query_response.png" alt="English Query Response" width="800"/>
 </p>
 
-### Response with Citations
+### Arabic Query Response (RTL Support)
 <p align="center">
-  <img src="images/query_response.png" alt="Query Response with Sources" width="800"/>
+  <img src="images/query_response_ar.png" alt="Arabic Query Response" width="800"/>
 </p>
+
+---
+
+## 🗂️ Document Coverage
+
+### SAMA Documents (4 Laws)
+| Document | Articles EN | Articles AR |
+|----------|-------------|-------------|
+| Finance Companies Control Law | ✅ | ✅ |
+| Implementing Regulation of Finance Companies | ✅ | ✅ |
+| Real Estate Finance Law | ✅ | ✅ |
+| Implementing Regulation of Real Estate Finance | ✅ | ✅ |
+
+### CMA Documents (7 Regulations)
+| Document | Articles EN | Articles AR |
+|----------|-------------|-------------|
+| Capital Market Law | ✅ | ✅ |
+| Capital Market Institutions Regulations | ✅ | ✅ |
+| Investment Funds Regulations | ✅ | ✅ |
+| Merger and Acquisition Regulations | ✅ | ✅ |
+| Rules on Offer of Securities | ✅ | ✅ |
+| Glossary of Defined Terms | ✅ | ✅ |
+| Law of Systemically Important Financial Institutions | ✅ | ✅ |
+
+**Total: 1,350+ indexed articles across 22 documents**
 
 ---
 
@@ -88,39 +120,48 @@ ShariaGuide is a **grounded AI assistant** that:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         USER QUERY                               │
-│                "What are the licensing fees?"                    │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
+│     "What are the licensing fees?" / "ما هي رسوم الترخيص؟"      │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    EMBEDDING MODEL                               │
-│              (all-MiniLM-L6-v2 - 384 dims)                      │
-│                   Query → Vector                                 │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
+│                    LANGUAGE DETECTION                            │
+│              Arabic (>30% Arabic chars) → 'ar'                  │
+│              Otherwise → 'en'                                    │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      VECTOR DATABASE                             │
-│                       (ChromaDB)                                 │
-│         Semantic search → Top 3 relevant articles               │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
+│                   REGULATOR DETECTION                            │
+│         Keywords → SAMA / CMA / BOTH                            │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PROMPT CONSTRUCTION                           │
-│        Retrieved Articles + Question + Instructions             │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
+│                     HYBRID SEARCH                                │
+│  ┌─────────────────┐         ┌─────────────────┐                │
+│  │   BM25 Search   │         │ Semantic Search │                │
+│  │   (Keywords)    │         │  (Embeddings)   │                │
+│  └────────┬────────┘         └────────┬────────┘                │
+│           │                           │                          │
+│           └───────────┬───────────────┘                          │
+│                       ▼                                          │
+│              Reciprocal Rank Fusion                              │
+│                  Top 5 Results                                   │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   LOCAL LLM (Qwen 2.5 7B)                       │
+│                    LOCAL LLM (Aya 8B)                           │
 │            Generates answer from retrieved context              │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │
-                          ▼
+│            Responds in query language (EN/AR)                   │
+└─────────────────────────────┬───────────────────────────────────┘
+                              │
+                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                    CITED RESPONSE                                │
 │     "According to Article 22, the licensing fees are..."        │
+│     "وفقاً للمادة 22، رسوم الترخيص هي..."                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -130,10 +171,10 @@ ShariaGuide is a **grounded AI assistant** that:
 
 | Component | Technology |
 |-----------|------------|
-| **PDF Processing** | PyMuPDF (fitz) |
-| **Embeddings** | Sentence-Transformers (all-MiniLM-L6-v2) |
+| **Embeddings** | intfloat/multilingual-e5-base (278M params) |
 | **Vector Database** | ChromaDB |
-| **LLM** | Qwen 2.5 7B via Ollama |
+| **Keyword Search** | BM25 (rank_bm25) |
+| **LLM** | Aya 8B via Ollama |
 | **Desktop UI** | PyWebView |
 | **Language** | Python 3.12+ |
 
@@ -141,13 +182,13 @@ ShariaGuide is a **grounded AI assistant** that:
 
 ## 📊 Performance
 
-| Metric | v1.0 | v1.1 | v1.2 |
-|--------|------|------|------|
-| Documents Indexed | 142 | 142 | 142 |
-| Articles Retrieved | 5 | 3 | 3 |
-| Average Query Time | ~70s | ~20s | **~13s** |
-| Model | Llama 3.1 8B | Llama 3.1 8B | **Qwen 2.5 7B** |
-| Output Quality | Good | Good | **Excellent** |
+| Metric | v1.2 | v2.0 |
+|--------|------|------|
+| Documents Indexed | 142 | **1,350+** |
+| Languages | English only | **English + Arabic** |
+| Regulators | SAMA only | **SAMA + CMA** |
+| Search Method | Semantic only | **Hybrid (BM25 + Semantic)** |
+| Arabic Support | ❌ | ✅ |
 
 ---
 
@@ -157,22 +198,34 @@ ShariaGuide is a **grounded AI assistant** that:
 - Python 3.12+
 - [Ollama](https://ollama.com/) installed
 - 8GB+ RAM recommended
+- GPU recommended (but not required)
 
 ### Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/M-AlAteegi/ShariaGuide.git
-cd ShariaGuide
+git clone https://github.com/M-AlAteegi/TadqeeqAI.git
+cd TadqeeqAI
 
 # Install dependencies
-pip install sentence-transformers chromadb pywebview requests pymupdf
+pip install -r requirements.txt
 
 # Download the LLM
-ollama pull qwen2.5:7b
+ollama pull aya:8b
 
 # Run the application
-python ShariaGuide.py
+python main.py
+```
+
+### Requirements
+
+```
+sentence-transformers
+chromadb
+rank-bm25
+pywebview
+ollama
+numpy
 ```
 
 ---
@@ -180,26 +233,46 @@ python ShariaGuide.py
 ## 📁 Project Structure
 
 ```
-ShariaGuide/
-├── ShariaGuide.py           # Main desktop application
-├── create_embeddings.py     # Vector database builder
-├── chunk_english_only.py    # PDF processing pipeline
-├── knowledge_base_english.json
-├── chroma_db/               # Vector database
-├── raw_pdfs/                # Source regulatory documents
-├── images/                  # Screenshots
-└── README.md
+TadqeeqAI/
+├── main.py                  # Main desktop application
+├── requirements.txt         # Python dependencies
+├── LICENSE                  # MIT License
+├── README.md               # This file
+├── RELEASE_NOTES.md        # Version history
+├── chroma_db_v2/           # Vector database (pre-built)
+├── bm25_index.pkl          # BM25 index (pre-built)
+├── documents.json          # Document metadata
+└── images/                 # Screenshots
+    ├── welcome_screen.png
+    ├── query_response.png
+    └── query_response_ar.png
 ```
+
+---
+
+## 💡 Example Queries
+
+### English
+- "What are the licensing fees for finance companies?"
+- "What is a qualified investor?"
+- "What are the requirements for sukuk issuance?"
+- "What are the capital requirements for finance companies?"
+
+### Arabic
+- "ما هي رسوم ترخيص شركات التمويل؟"
+- "ما هو المستثمر المؤهل؟"
+- "ما هي متطلبات إصدار الصكوك؟"
+- "ما هي متطلبات رأس المال لشركات التمويل؟"
 
 ---
 
 ## 🔮 Future Enhancements
 
-- [ ] Arabic language support (requires OCR integration)
-- [ ] Multi-document upload via UI
 - [ ] Conversation memory
 - [ ] Export answers to PDF reports
+- [ ] Additional regulator coverage
 - [ ] Cloud deployment option
+- [ ] API endpoint for integration
 
 ---
 
@@ -223,8 +296,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - Saudi Arabian Monetary Authority (SAMA) for regulatory documentation
-- Alibaba Cloud for Qwen 2.5
-- The open-source community for the incredible tools that made this possible
+- Capital Market Authority (CMA) for regulatory documentation
+- Cohere for Aya multilingual model
+- The open-source community for the incredible tools
 
 ---
 

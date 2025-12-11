@@ -1,0 +1,17 @@
+# TadqeeqAI v2.0 Requirements
+
+# Embeddings
+sentence-transformers>=2.2.0
+
+# Vector Database
+chromadb>=0.4.0
+
+# LLM
+ollama>=0.1.0
+
+# Hybrid Search
+rank-bm25>=0.2.2
+numpy>=1.24.0
+
+# Desktop UI
+pywebview>=4.0.0
