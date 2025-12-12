@@ -2,106 +2,66 @@
 # TadqeeqAI .gitignore
 # =============================================================================
 
-# -----------------------------------------------------------------------------
 # Python
-# -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
 
-# -----------------------------------------------------------------------------
 # Virtual Environments
-# -----------------------------------------------------------------------------
 .env
 .venv
 env/
 venv/
-ENV/
-env.bak/
-venv.bak/
 
-# -----------------------------------------------------------------------------
-# Jupyter Notebooks
-# -----------------------------------------------------------------------------
+# Jupyter
 .ipynb_checkpoints/
 *.ipynb
 
-# -----------------------------------------------------------------------------
-# IDE / Editor
-# -----------------------------------------------------------------------------
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
-.project
-.pydevproject
-.settings/
 
-# -----------------------------------------------------------------------------
-# OS Generated
-# -----------------------------------------------------------------------------
+# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 desktop.ini
 
-# -----------------------------------------------------------------------------
-# Project Specific - Development Files (Not needed for runtime)
-# -----------------------------------------------------------------------------
+# =============================================================================
+# Project Specific - HIDE THESE
+# =============================================================================
 
 # Source data (already embedded in database)
 data/
 
-# Build scripts (embeddings already built)
+# Build/development scripts
 build_embeddings.py
 
-# Old/deprecated files
+# Old/deprecated versions
 main_v2.py
-rag_pipeline.py
-PROJECT_CONTEXT.md
+main_v21.py
 
-# Development icons
+# Development files
+PROJECT_CONTEXT.md
+rag_pipeline.py
+
+# Icons
 *.ico
 
-# -----------------------------------------------------------------------------
-# Logs and Temp Files
-# -----------------------------------------------------------------------------
-*.log
-*.tmp
-*.temp
-logs/
+# Chat history (user-specific, not for repo)
+chat_history/
 
-# -----------------------------------------------------------------------------
-# Keep These (Do NOT ignore)
-# -----------------------------------------------------------------------------
-# !main.py
-# !requirements.txt
-# !README.md
-# !RELEASE_NOTES.md
-# !LICENSE
-# !chroma_db_v2/
-# !bm25_index.pkl
-# !documents.json
-# !images/
+# =============================================================================
+# KEEP THESE (Do NOT ignore)
+# =============================================================================
+# main.py
+# requirements.txt
+# README.md
+# RELEASE_NOTES.md
+# LICENSE
+# chroma_db_v2/
+# bm25_index.pkl
+# documents.json
+# images/

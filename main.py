@@ -1,22 +1,31 @@
 """
-TadqeeqAI v2.0
+TadqeeqAI v2.1
 ==============
 Bilingual RAG system for Saudi Arabian financial regulations.
 SAMA + CMA · English + Arabic
 
-Key Features:
-- Hybrid Search: BM25 (keyword) + Semantic (embeddings)
-- Article-level chunking with full context
-- Single multilingual embedding model (E5-base)
+v2.1 Features:
+- Chat history with persistent storage
+- New Chat button
+- Improved prompts with dynamic closings
+- Follow-up support (simplify, examples)
+- Domain-restricted responses
+- Auto-start Ollama (Intel ipex-llm)
 
 Prerequisites:
-    1. Run build_embeddings.py first
-    2. Ensure Ollama is running with aya:8b model
+    1. Ensure chroma_db_v2 and bm25_index.pkl exist
+    2. Ollama will be started automatically
 """
 
 import json
 import pickle
 import re
+import os
+import subprocess
+import time
+import uuid
+from datetime import datetime
+from pathlib import Path
 import chromadb
 from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
@@ -28,6 +37,7 @@ import webview
 CHROMA_PATH = "./chroma_db_v2"
 BM25_PATH = "./bm25_index.pkl"
 DOCS_PATH = "./documents.json"
+CHAT_HISTORY_PATH = "./chat_history"
 EMBEDDING_MODEL = 'intfloat/multilingual-e5-base'
 
 # LLM Model Options:
@@ -35,6 +45,153 @@ EMBEDDING_MODEL = 'intfloat/multilingual-e5-base'
 # - 'qwen2.5:7b'   : Good overall but leaks Chinese on long Arabic responses  
 # - 'jais:13b'     : Arabic-first but truncates responses
 LLM_MODEL = 'aya:8b'
+
+# Ensure chat history directory exists
+Path(CHAT_HISTORY_PATH).mkdir(exist_ok=True)
+
+
+def start_ollama():
+    """Start Ollama server if not already running."""
+    try:
+        result = subprocess.run(['ollama', 'list'], capture_output=True, timeout=5)
+        if result.returncode == 0:
+            print("  ✓ Ollama is already running")
+            return True
+    except:
+        pass
+    
+    print("  Starting Ollama...")
+    try:
+        # On Windows, use START /B to run in background without blocking
+        if os.name == 'nt':
+            subprocess.Popen(
+                'start /B ollama serve',
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            subprocess.Popen(
+                ['ollama', 'serve'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        
+        for i in range(30):
+            time.sleep(1)
+            try:
+                result = subprocess.run(['ollama', 'list'], capture_output=True, timeout=5)
+                if result.returncode == 0:
+                    print("  ✓ Ollama started successfully")
+                    return True
+            except:
+                pass
+            if i % 10 == 9:
+                print(f"    Waiting... ({i+1}s)")
+        
+        print("  ⚠ Ollama may not have started - continuing anyway")
+        return False
+    except Exception as e:
+        print(f"  ⚠ Could not start Ollama: {e}")
+        return False
+
+
+class ChatHistory:
+    """Manages persistent chat history."""
+    
+    def __init__(self):
+        self.history_path = Path(CHAT_HISTORY_PATH)
+        self.current_chat_id = None
+        self.current_messages = []
+    
+    def new_chat(self):
+        """Start a new chat session."""
+        self.current_chat_id = str(uuid.uuid4())[:8]
+        self.current_messages = []
+        return self.current_chat_id
+    
+    def add_message(self, role, content, sources=None, regulator=None):
+        """Add a message to current chat."""
+        msg = {
+            'role': role,
+            'content': content,
+            'timestamp': datetime.now().isoformat()
+        }
+        if sources:
+            msg['sources'] = sources
+        if regulator:
+            msg['regulator'] = regulator
+        self.current_messages.append(msg)
+        self._save_current()
+    
+    def _save_current(self):
+        """Save current chat to file."""
+        if not self.current_chat_id:
+            return
+        filepath = self.history_path / f"{self.current_chat_id}.json"
+        chat_data = {
+            'id': self.current_chat_id,
+            'created': self.current_messages[0]['timestamp'] if self.current_messages else datetime.now().isoformat(),
+            'updated': datetime.now().isoformat(),
+            'messages': self.current_messages,
+            'preview': self._get_preview()
+        }
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(chat_data, f, ensure_ascii=False, indent=2)
+    
+    def _get_preview(self):
+        """Get first user message as preview."""
+        for msg in self.current_messages:
+            if msg['role'] == 'user':
+                text = msg['content']
+                return text[:50] + '...' if len(text) > 50 else text
+        return 'New Chat'
+    
+    def get_recent_chats(self, limit=20):
+        """Get list of recent chats."""
+        chats = []
+        for filepath in sorted(self.history_path.glob('*.json'), key=lambda x: x.stat().st_mtime, reverse=True):
+            try:
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    chats.append({
+                        'id': data['id'],
+                        'preview': data.get('preview', 'Chat'),
+                        'updated': data.get('updated', ''),
+                        'message_count': len(data.get('messages', []))
+                    })
+            except:
+                pass
+            if len(chats) >= limit:
+                break
+        return chats
+    
+    def load_chat(self, chat_id):
+        """Load a specific chat."""
+        filepath = self.history_path / f"{chat_id}.json"
+        if filepath.exists():
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                self.current_chat_id = chat_id
+                self.current_messages = data.get('messages', [])
+                return self.current_messages
+        return []
+    
+    def get_conversation_context(self, limit=6):
+        """Get recent messages for context (for follow-ups)."""
+        return self.current_messages[-limit:] if self.current_messages else []
+    
+    def delete_chat(self, chat_id):
+        """Delete a chat permanently."""
+        filepath = self.history_path / f"{chat_id}.json"
+        if filepath.exists():
+            filepath.unlink()
+            # If we deleted the current chat, reset
+            if self.current_chat_id == chat_id:
+                self.current_chat_id = None
+                self.current_messages = []
+            return True
+        return False
 
 
 class TadqeeqRAG:
@@ -48,7 +205,10 @@ class TadqeeqRAG:
         return cls._instance
     
     def __init__(self):
-        print("Loading TadqeeqAI v2.0...")
+        print("Loading TadqeeqAI v2.1...")
+        
+        # Start Ollama first
+        start_ollama()
         
         # Load documents
         print("  Loading documents...")
@@ -90,7 +250,10 @@ class TadqeeqRAG:
         self._warmup_llm()
         print(f"    ✓ {LLM_MODEL}")
         
-        print("\n✓ TadqeeqAI v2.0 Ready!\n")
+        # Chat history
+        self.chat_history = ChatHistory()
+        
+        print("\n✓ TadqeeqAI v2.1 Ready!\n")
     
     def _warmup_llm(self):
         try:
@@ -103,102 +266,94 @@ class TadqeeqRAG:
         arabic_chars = len(re.findall(r'[\u0600-\u06FF]', text))
         return 'ar' if arabic_chars > len(text) * 0.3 else 'en'
     
-    def detect_regulator(self, question):
-        q = question.lower()
-        # Also check original for Arabic (case doesn't apply)
-        q_orig = question
+    def detect_regulator(self, query):
+        q_lower = query.lower()
         
-        sama_kw = ['finance company', 'finance companies', 'license fee', 'licensing fee', 'microfinance',
-                   'real estate finance', 'mortgage', 'borrower', 'lending', 'sama', 'monetary']
-        sama_ar = ['شركة تمويل', 'شركات التمويل', 'رسوم الترخيص', 'رسوم ترخيص', 'تمويل عقاري',
-                   'مؤسسة النقد', 'ساما', 'مقابل مالي', 'المقابل المالي', 'شركات تمويل']
+        # English keywords
+        sama_en = ['sama', 'finance company', 'finance companies', 'financing company',
+                   'licensing fee', 'real estate finance', 'mortgage', 'microfinance',
+                   'finance control', 'monetary authority', 'bank', 'banking']
+        cma_en = ['cma', 'capital market', 'securities', 'sukuk', 'debt instrument',
+                  'investment fund', 'qualified investor', 'public offering', 'ipo',
+                  'private placement', 'prospectus', 'listing', 'merger', 'acquisition',
+                  'stock', 'shares', 'exchange']
         
-        cma_kw = ['securities', 'capital market', 'investment fund', 'sukuk', 'qualified investor',
-                  'prospectus', 'listing', 'ipo', 'merger', 'acquisition', 'debt instrument', 'cma']
-        cma_ar = ['أوراق مالية', 'سوق المال', 'صندوق استثمار', 'صكوك', 'مستثمر مؤهل', 'المستثمر المؤهل',
-                  'هيئة السوق المالية', 'هيئة السوق', 'اندماج', 'استحواذ', 'أدوات دين', 'طرح',
-                  'صناديق الاستثمار', 'الصكوك', 'طرح عام', 'طرح خاص', 'نشرة الإصدار']
+        # Arabic keywords (don't lowercase)
+        sama_ar = ['ساما', 'شركة التمويل', 'شركات التمويل', 'رسوم الترخيص', 'التمويل العقاري',
+                   'التمويل الأصغر', 'مؤسسة النقد', 'البنك المركزي', 'تمويل']
+        cma_ar = ['مستثمر مؤهل', 'المستثمر المؤهل', 'هيئة السوق المالية', 'هيئة السوق',
+                  'صكوك', 'الصكوك', 'طرح عام', 'طرح خاص', 'نشرة الإصدار',
+                  'صناديق الاستثمار', 'أوراق مالية', 'الأوراق المالية', 'سوق المال',
+                  'الاندماج', 'الاستحواذ', 'الأسهم', 'التداول']
         
-        sama_score = sum(1 for kw in sama_kw if kw in q) + sum(1 for kw in sama_ar if kw in q_orig)
-        cma_score = sum(1 for kw in cma_kw if kw in q) + sum(1 for kw in cma_ar if kw in q_orig)
+        # Check English keywords
+        sama_match = any(kw in q_lower for kw in sama_en)
+        cma_match = any(kw in q_lower for kw in cma_en)
         
-        if sama_score > 0 and cma_score == 0: return 'SAMA'
-        elif cma_score > 0 and sama_score == 0: return 'CMA'
-        elif sama_score > cma_score: return 'SAMA'
-        elif cma_score > sama_score: return 'CMA'
+        # Check Arabic keywords (case-sensitive)
+        sama_match = sama_match or any(kw in query for kw in sama_ar)
+        cma_match = cma_match or any(kw in query for kw in cma_ar)
+        
+        if sama_match and cma_match:
+            return 'BOTH'
+        elif sama_match:
+            return 'SAMA'
+        elif cma_match:
+            return 'CMA'
         return 'BOTH'
     
     def translate_arabic_query(self, query):
-        """Translate Arabic query to English for cross-lingual search."""
-        # Direct term mappings (Arabic → English)
-        ar_to_en = {
-            # Licensing & Fees
-            'رسوم ترخيص': 'licensing fees license fee',
-            'رسوم الترخيص': 'licensing fees license fee', 
-            'مقابل مالي': 'licensing fees financial consideration fee',
-            'المقابل المالي': 'licensing fees financial consideration fee',
-            'رسوم': 'fees',
-            'ترخيص': 'license licensing',
-            # Companies & Entities
+        """Translate Arabic query keywords to English for searching English documents."""
+        translations = {
+            'رسوم الترخيص': 'licensing fees',
+            'رسوم ترخيص': 'licensing fees',
             'شركات التمويل': 'finance companies',
-            'شركة تمويل': 'finance company',
-            'شركة': 'company',
-            'شركات': 'companies',
-            # Investment
-            'مستثمر مؤهل': 'qualified investor',
+            'شركة التمويل': 'finance company',
+            'التمويل العقاري': 'real estate finance',
+            'التمويل الأصغر': 'microfinance',
             'المستثمر المؤهل': 'qualified investor',
-            'صندوق استثمار': 'investment fund',
-            'صناديق الاستثمار': 'investment funds',
-            'صناديق': 'funds',
-            # Securities & Sukuk - CRITICAL
-            'صكوك': 'sukuk debt instruments securities',
-            'الصكوك': 'sukuk debt instruments securities',
-            'أدوات دين': 'debt instruments sukuk securities',
-            'أوراق مالية': 'securities',
-            'طرح': 'offering offer issuance',
-            'إصدار': 'issuance issue offering',
-            'اكتتاب': 'subscription IPO offering',
-            'طرح عام': 'public offering IPO',
+            'مستثمر مؤهل': 'qualified investor',
+            'الصكوك': 'sukuk debt instruments',
+            'صكوك': 'sukuk debt instruments',
+            'أدوات الدين': 'debt instruments',
+            'طرح عام': 'public offering',
             'طرح خاص': 'private placement',
-            # Capital & Requirements
-            'رأس المال': 'capital',
-            'متطلبات رأس المال': 'capital requirements minimum capital',
-            'الحد الأدنى': 'minimum',
-            'متطلبات': 'requirements',
-            # Real Estate
-            'تمويل عقاري': 'real estate finance mortgage',
-            'عقاري': 'real estate',
-            # Regulators
-            'ساما': 'SAMA central bank',
-            'مؤسسة النقد': 'SAMA central bank monetary authority',
-            'هيئة السوق المالية': 'CMA capital market authority',
-            'هيئة السوق': 'CMA capital market',
-            # M&A
-            'اندماج': 'merger',
-            'استحواذ': 'acquisition',
-            'الاندماج والاستحواذ': 'merger acquisition',
-            # General
-            'ما هي': 'what are',
-            'ما هو': 'what is',
-            'كيف': 'how',
-            'شروط': 'conditions requirements',
-            'نظام': 'law regulation system',
-            'لائحة': 'regulation implementing',
-            # Microfinance
-            'تمويل متناهي الصغر': 'microfinance',
-            'متناهي الصغر': 'microfinance',
+            'نشرة الإصدار': 'prospectus',
+            'صناديق الاستثمار': 'investment funds',
+            'صندوق استثمار': 'investment fund',
+            'رأس المال': 'capital requirements',
+            'متطلبات رأس المال': 'capital requirements',
+            'الحد الأدنى': 'minimum requirements',
+            'هيئة السوق المالية': 'capital market authority CMA',
+            'مؤسسة النقد': 'SAMA monetary authority',
+            'ساما': 'SAMA',
+            'الاندماج': 'merger',
+            'الاستحواذ': 'acquisition',
+            'الأسهم': 'shares stocks',
+            'الإفصاح': 'disclosure',
+            'الحوكمة': 'governance',
+            'مجلس الإدارة': 'board of directors',
+            'تقرير سنوي': 'annual report',
+            'القوائم المالية': 'financial statements',
+            'المراجع الخارجي': 'external auditor',
+            'العقوبات': 'penalties',
+            'المخالفات': 'violations',
+            'الترخيص': 'license licensing',
+            'التسجيل': 'registration',
+            'الإدراج': 'listing',
+            'السوق الموازية': 'parallel market',
+            'الطرح': 'offering',
+            'الاكتتاب': 'subscription IPO',
         }
         
-        english_terms = []
+        result = query
+        for ar, en in translations.items():
+            if ar in query:
+                result = result + ' ' + en
         
-        for ar_term, en_term in ar_to_en.items():
-            if ar_term in query:
-                english_terms.append(en_term)
+        if result != query:
+            return result
         
-        if english_terms:
-            return ' '.join(english_terms)
-        
-        # Fallback: return original (will use semantic similarity)
         return query
     
     def expand_query(self, query, lang):
@@ -222,7 +377,7 @@ class TadqeeqRAG:
         return query + ' ' + ' '.join(expansions) if expansions else query
     
     def bm25_search(self, query, regulator, language, top_k=15, force_english=False):
-        """BM25 keyword search. If force_english, search English docs regardless of query language."""
+        """BM25 keyword search."""
         search_lang = 'en' if force_english else language
         tokens = re.findall(r'[\u0600-\u06FF]+|[a-zA-Z]+|\d+', query.lower())
         if not tokens: return []
@@ -238,7 +393,7 @@ class TadqeeqRAG:
         return results
     
     def semantic_search(self, query, regulator, language, top_k=15, force_english=False):
-        """Semantic search. If force_english, search English docs regardless of query language."""
+        """Semantic search."""
         search_lang = 'en' if force_english else language
         embedding = self.embedder.encode([f"query: {query}"]).tolist()
         where = {"language": {"$eq": search_lang}} if regulator == 'BOTH' else {
@@ -258,14 +413,10 @@ class TadqeeqRAG:
         return output[:top_k]
     
     def hybrid_search(self, query, n_results=5):
-        """
-        Hybrid search with English Bridge strategy.
-        For Arabic queries: translate to English, search English docs, respond in Arabic.
-        """
+        """Hybrid search with English Bridge strategy."""
         user_language = self.detect_language(query)
         regulator = self.detect_regulator(query)
         
-        # ENGLISH BRIDGE: For Arabic queries, translate and search English docs
         if user_language == 'ar':
             english_query = self.translate_arabic_query(query)
             expanded = self.expand_query(english_query, 'en')
@@ -273,8 +424,6 @@ class TadqeeqRAG:
             print(f"  Original: {query[:50]}")
             print(f"  Translated: {english_query[:50]}")
             print(f"  Regulator: {regulator}")
-            
-            # Search ENGLISH documents with translated query
             bm25_res = self.bm25_search(expanded, regulator, user_language, force_english=True)
             sem_res = self.semantic_search(expanded, regulator, user_language, force_english=True)
         else:
@@ -305,18 +454,95 @@ class TadqeeqRAG:
             print(f"  → {r['doc']['article']} [{'+'.join(r['src'])}]")
         return final, regulator, user_language
     
-    def build_prompt(self, question, docs, language):
-        """
-        Build LLM prompt optimized for Aya model.
-        """
+    def is_follow_up(self, query):
+        """Detect if query is a follow-up request."""
+        query_lower = query.lower().strip()
+        
+        # English follow-up patterns
+        follow_up_en = [
+            'yes', 'yeah', 'sure', 'please', 'ok', 'okay',
+            'simplify', 'explain', 'example', 'examples', 'scenario',
+            'more details', 'elaborate', 'clarify', 'what do you mean',
+            'can you explain', 'help me understand', 'break it down',
+            'in simple terms', 'simpler', 'easier'
+        ]
+        
+        # Arabic follow-up patterns
+        follow_up_ar = [
+            'نعم', 'أجل', 'طيب', 'حسنا', 'موافق', 'تمام',
+            'وضح', 'اشرح', 'مثال', 'أمثلة', 'سيناريو',
+            'تفاصيل أكثر', 'بسط', 'بشكل أبسط', 'ساعدني أفهم',
+            'ماذا تعني', 'اشرح أكثر'
+        ]
+        
+        if any(pattern in query_lower for pattern in follow_up_en):
+            return True
+        if any(pattern in query for pattern in follow_up_ar):
+            return True
+        
+        # Very short responses are likely follow-ups
+        if len(query.strip()) < 15 and len(query.split()) <= 3:
+            return True
+        
+        return False
+    
+    def is_out_of_domain(self, query):
+        """Check if query is outside SAMA/CMA domain."""
+        query_lower = query.lower()
+        
+        # Out of domain indicators
+        out_of_domain = [
+            'weather', 'recipe', 'cook', 'movie', 'song', 'music',
+            'game', 'sport', 'football', 'soccer', 'basketball',
+            'joke', 'story', 'poem', 'write me', 'create a',
+            'translate', 'what is the capital', 'who is the president',
+            'how to code', 'python', 'javascript', 'programming',
+            'health', 'medical', 'doctor', 'disease',
+            'travel', 'hotel', 'flight', 'vacation',
+            'الطقس', 'وصفة', 'طبخ', 'فيلم', 'أغنية', 'موسيقى',
+            'لعبة', 'رياضة', 'كرة القدم', 'نكتة', 'قصة', 'قصيدة',
+            'ترجم', 'عاصمة', 'رئيس', 'برمجة', 'صحة', 'طبيب', 'سفر'
+        ]
+        
+        # Check for out-of-domain content
+        if any(term in query_lower for term in out_of_domain):
+            return True
+        
+        return False
+    
+    def build_prompt(self, question, docs, language, is_follow_up=False, conversation_context=None):
+        """Build LLM prompt optimized for Aya model."""
         ctx = "\n\n---\n\n".join([f"[Document {i}]\nSource: {d['document']}\nArticle: {d['article']}\nContent:\n{d['text']}" 
                                   for i, d in enumerate(docs, 1)])
         
+        # Add conversation context for follow-ups
+        conv_context = ""
+        if is_follow_up and conversation_context:
+            conv_context = "\n\nPrevious conversation:\n"
+            for msg in conversation_context[-4:]:  # Last 4 messages
+                role = "User" if msg['role'] == 'user' else "Assistant"
+                conv_context += f"{role}: {msg['content'][:500]}\n"
+        
         if language == 'ar':
-            # Arabic prompt for Aya
-            return f"""أنت مساعد قانوني متخصص في الأنظمة المالية السعودية.
+            if is_follow_up:
+                return f"""أنت مساعد قانوني متخصص في الأنظمة المالية السعودية (ساما وهيئة السوق المالية).
 
-مهمتك: اقرأ المستندات بعناية وأجب على السؤال باللغة العربية.
+المحادثة السابقة:
+{conv_context}
+
+المستندات المرجعية:
+{ctx}
+
+طلب المستخدم: {question}
+
+المستخدم يطلب توضيحاً أو تبسيطاً. قم بما يلي:
+- إذا طلب تبسيط: اشرح المفهوم بلغة سهلة وواضحة
+- إذا طلب مثال: قدم سيناريو عملي يوضح التطبيق
+- إذا طلب توضيح: اشرح النقاط الغامضة بالتفصيل
+
+الإجابة:"""
+            else:
+                return f"""أنت مساعد قانوني متخصص في الأنظمة المالية السعودية (ساما وهيئة السوق المالية).
 
 تعليمات مهمة:
 - اقرأ كل مستند بعناية قبل الإجابة
@@ -326,6 +552,7 @@ class TadqeeqRAG:
 - اكتب الأرقام والمبالغ كما هي في المستند
 - استخدم تنسيق Markdown: استخدم **نص** للتأكيد و - للقوائم
 - إذا لم تجد المعلومة المحددة، قل ذلك بوضوح
+- لا تذكر أنك ستساعد في نهاية الإجابة
 
 المستندات المرجعية:
 {ctx}
@@ -334,18 +561,36 @@ class TadqeeqRAG:
 
 الإجابة:"""
         
-        # English prompt for Aya
-        return f"""You are a legal assistant specializing in Saudi Arabian financial regulations.
+        # English prompts
+        if is_follow_up:
+            return f"""You are a legal assistant specializing in Saudi Arabian financial regulations (SAMA and CMA).
 
-Your task: Carefully read the documents below and answer the question.
+Previous conversation:
+{conv_context}
+
+Reference Documents:
+{ctx}
+
+User request: {question}
+
+The user is asking for clarification or simplification. Do the following:
+- If they want simplification: Explain the concept in plain, easy-to-understand language
+- If they want examples: Provide a practical scenario showing how this applies
+- If they want clarification: Explain the unclear points in detail
+
+Answer:"""
+        else:
+            return f"""You are a legal assistant specializing in Saudi Arabian financial regulations (SAMA and CMA).
 
 Important instructions:
 - Read each document carefully before answering
 - Extract the relevant information from the documents
-- Cite the Article number when referencing information
+- Cite the Article number when referencing information (e.g., "Article 22")
 - "Sukuk" and "debt instruments" refer to the same thing
 - Preserve exact numbers and amounts as written in the documents
+- Use Markdown formatting: **bold** for emphasis and - for lists
 - If the specific information is not found, say so clearly
+- Do not offer further assistance at the end of your response
 
 Reference Documents:
 {ctx}
@@ -354,26 +599,88 @@ Question: {question}
 
 Answer:"""
     
+    def build_out_of_domain_response(self, language):
+        """Return response for out-of-domain queries."""
+        if language == 'ar':
+            return """عذراً، أنا مساعد متخصص في الأنظمة المالية السعودية فقط.
+
+يمكنني مساعدتك في:
+- **أنظمة ساما**: شركات التمويل، التمويل العقاري، التمويل الأصغر
+- **أنظمة هيئة السوق المالية**: الصكوك، صناديق الاستثمار، المستثمر المؤهل، الطرح والإدراج
+
+يرجى طرح سؤال يتعلق بهذه المواضيع."""
+        else:
+            return """I apologize, but I am a specialized assistant for Saudi Arabian financial regulations only.
+
+I can help you with:
+- **SAMA regulations**: Finance companies, real estate finance, microfinance
+- **CMA regulations**: Sukuk, investment funds, qualified investors, offerings and listings
+
+Please ask a question related to these topics."""
+    
     def generate_response(self, question):
+        """Generate response with follow-up support."""
+        lang = self.detect_language(question)
+        
+        # Check if out of domain
+        if self.is_out_of_domain(question):
+            return {
+                'answer': self.build_out_of_domain_response(lang),
+                'sources': [],
+                'regulator': 'NONE'
+            }
+        
+        # Check if this is a follow-up
+        is_followup = self.is_follow_up(question)
+        conversation_context = None
+        
+        if is_followup:
+            conversation_context = self.chat_history.get_conversation_context()
+            # If we have context, use the previous search results
+            if conversation_context:
+                # Find the last assistant message with sources
+                last_sources = None
+                for msg in reversed(conversation_context):
+                    if msg['role'] == 'assistant' and 'sources' in msg:
+                        last_sources = msg.get('sources', [])
+                        break
+        
+        # Perform search
         docs, reg, lang = self.hybrid_search(question)
+        
         if not docs:
-            return {'answer': 'No relevant information found.' if lang == 'en' else 'لم يتم العثور على معلومات ذات صلة.', 'sources': [], 'regulator': reg}
-        prompt = self.build_prompt(question, docs, lang)
+            no_info = 'No relevant information found.' if lang == 'en' else 'لم يتم العثور على معلومات ذات صلة.'
+            return {'answer': no_info, 'sources': [], 'regulator': reg}
+        
+        prompt = self.build_prompt(question, docs, lang, is_followup, conversation_context)
         resp = ollama.generate(model=LLM_MODEL, prompt=prompt, options={'temperature': 0.1, 'num_predict': 2000})
+        
         seen = set()
         sources = [{'article': d['article'], 'document': d['document']} for d in docs if d['article'] not in seen and not seen.add(d['article'])]
+        
         return {'answer': resp['response'].strip(), 'sources': sources, 'regulator': reg}
 
 
 class API:
+    def __init__(self):
+        self.rag = None
+    
     def initialize(self):
         try:
             print("API.initialize() called...")
-            rag = TadqeeqRAG.get_instance()
+            self.rag = TadqeeqRAG.get_instance()
             print("RAG instance created successfully")
-            return {'status': 'ready', 'total': rag.total, 'sama': rag.sama_count, 'cma': rag.cma_count,
-                    'sama_en': rag.stats['SAMA']['en'], 'sama_ar': rag.stats['SAMA']['ar'],
-                    'cma_en': rag.stats['CMA']['en'], 'cma_ar': rag.stats['CMA']['ar']}
+            return {
+                'status': 'ready',
+                'total': self.rag.total,
+                'sama': self.rag.sama_count,
+                'cma': self.rag.cma_count,
+                'sama_en': self.rag.stats['SAMA']['en'],
+                'sama_ar': self.rag.stats['SAMA']['ar'],
+                'cma_en': self.rag.stats['CMA']['en'],
+                'cma_ar': self.rag.stats['CMA']['ar'],
+                'chats': self.rag.chat_history.get_recent_chats()
+            }
         except Exception as e:
             print(f"API.initialize() ERROR: {e}")
             import traceback
@@ -381,7 +688,47 @@ class API:
             return {'status': 'error', 'message': str(e)}
     
     def query(self, question):
-        return TadqeeqRAG.get_instance().generate_response(question)
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        
+        # Add user message to history
+        self.rag.chat_history.add_message('user', question)
+        
+        # Generate response
+        result = self.rag.generate_response(question)
+        
+        # Add assistant message to history
+        self.rag.chat_history.add_message(
+            'assistant',
+            result['answer'],
+            result.get('sources'),
+            result.get('regulator')
+        )
+        
+        return result
+    
+    def new_chat(self):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        chat_id = self.rag.chat_history.new_chat()
+        return {'id': chat_id, 'chats': self.rag.chat_history.get_recent_chats()}
+    
+    def load_chat(self, chat_id):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        messages = self.rag.chat_history.load_chat(chat_id)
+        return {'messages': messages}
+    
+    def get_chats(self):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        return {'chats': self.rag.chat_history.get_recent_chats()}
+    
+    def delete_chat(self, chat_id):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        success = self.rag.chat_history.delete_chat(chat_id)
+        return {'success': success, 'chats': self.rag.chat_history.get_recent_chats()}
 
 
 HTML = '''<!DOCTYPE html>
@@ -389,7 +736,7 @@ HTML = '''<!DOCTYPE html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TadqeeqAI v2.0</title>
+    <title>TadqeeqAI v2.1</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
@@ -406,6 +753,7 @@ HTML = '''<!DOCTYPE html>
             --accent2: #00b894;
             --sama: #58a6ff;
             --cma: #3fb950;
+            --danger: #f85149;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -418,13 +766,12 @@ HTML = '''<!DOCTYPE html>
             user-select: none;
         }
         
-        /* Custom Scrollbar - macOS style */
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
         
-        /* Selection */
         ::selection { background: var(--accent); color: var(--bg); }
         
         /* Sidebar */
@@ -436,49 +783,213 @@ HTML = '''<!DOCTYPE html>
             flex-direction: column;
         }
         .sidebar-header {
-            padding: 20px;
+            padding: 16px;
             border-bottom: 1px solid var(--border);
         }
         .logo {
             display: flex;
             align-items: center;
             gap: 12px;
+            margin-bottom: 12px;
         }
         .logo-icon {
-            width: 42px;
-            height: 42px;
+            width: 38px;
+            height: 38px;
             background: linear-gradient(135deg, var(--accent), var(--accent2));
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
-            overflow: hidden;
         }
-        .logo-icon svg {
-            width: 24px;
-            height: 24px;
-            fill: var(--bg);
-        }
-        .logo-text { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+        .logo-icon svg { width: 20px; height: 20px; fill: var(--bg); }
+        .logo-text { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
         .logo-sub { font-size: 10px; color: var(--text3); margin-top: 2px; letter-spacing: 0.5px; }
         
-        /* Examples */
-        .examples { padding: 16px; flex: 1; overflow-y: auto; }
+        /* New Chat Button */
+        .new-chat-btn {
+            width: 100%;
+            padding: 10px 14px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.15s ease;
+        }
+        .new-chat-btn:hover {
+            background: var(--bg4);
+            border-color: var(--accent);
+        }
+        .new-chat-btn svg { width: 16px; height: 16px; stroke: var(--accent); fill: none; }
+        
+        /* Chat History */
+        .chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+        .history-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text3);
+            margin-bottom: 8px;
+            font-weight: 600;
+            padding: 0 4px;
+        }
+        .history-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            background: transparent;
+            border-radius: 8px;
+            margin-bottom: 4px;
+            font-size: 12px;
+            color: var(--text2);
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid transparent;
+            position: relative;
+        }
+        .history-item:hover {
+            background: var(--bg3);
+            color: var(--text);
+        }
+        .history-item.active {
+            background: var(--bg4);
+            border-color: var(--border);
+            color: var(--text);
+        }
+        .history-item-text {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .history-item-menu {
+            opacity: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+        .history-item:hover .history-item-menu { opacity: 1; }
+        .history-item-menu:hover { background: var(--bg4); }
+        .history-item-menu svg { width: 14px; height: 14px; fill: var(--text3); }
+        
+        /* Dropdown Menu */
+        .dropdown {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 4px;
+            z-index: 100;
+            display: none;
+            min-width: 120px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .dropdown.show { display: block; }
+        .dropdown-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--danger);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .dropdown-item:hover { background: var(--bg4); }
+        .dropdown-item svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
+        
+        /* Delete Confirmation Modal */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+        }
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: var(--text);
+        }
+        .modal-text {
+            font-size: 13px;
+            color: var(--text2);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .modal-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            border: 1px solid var(--border);
+        }
+        .modal-btn.cancel {
+            background: var(--bg3);
+            color: var(--text);
+        }
+        .modal-btn.cancel:hover { background: var(--bg4); }
+        .modal-btn.delete {
+            background: var(--danger);
+            color: white;
+            border-color: var(--danger);
+        }
+        .modal-btn.delete:hover { opacity: 0.9; }
+        
+        /* Examples Section */
+        .examples { padding: 12px; border-top: 1px solid var(--border); }
         .ex-title {
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 1.5px;
             color: var(--text3);
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             font-weight: 600;
         }
         .ex {
-            padding: 10px 12px;
+            padding: 8px 10px;
             background: var(--bg3);
-            border-radius: 8px;
-            margin-bottom: 6px;
-            font-size: 12px;
+            border-radius: 6px;
+            margin-bottom: 4px;
+            font-size: 11px;
             color: var(--text2);
             cursor: pointer;
             transition: all 0.15s ease;
@@ -493,28 +1004,23 @@ HTML = '''<!DOCTYPE html>
             color: var(--text);
         }
         .tag {
-            font-size: 9px;
-            padding: 2px 6px;
-            border-radius: 4px;
+            font-size: 8px;
+            padding: 2px 5px;
+            border-radius: 3px;
             font-weight: 600;
             text-transform: uppercase;
             flex-shrink: 0;
         }
         .tag.sama { background: rgba(88, 166, 255, 0.15); color: var(--sama); }
         .tag.cma { background: rgba(63, 185, 80, 0.15); color: var(--cma); }
-        .lang-section {
-            margin-top: 16px;
-            padding-top: 16px;
-            border-top: 1px solid var(--border);
-        }
+        .lang-section { margin-top: 10px; }
         .lang-section .ex { direction: rtl; text-align: right; }
-        .lang-section .tag { margin-left: 0; margin-right: auto; }
         
         /* Status */
         .status {
-            padding: 14px 16px;
+            padding: 12px 14px;
             border-top: 1px solid var(--border);
-            font-size: 11px;
+            font-size: 10px;
             color: var(--text3);
             background: var(--bg);
         }
@@ -528,14 +1034,6 @@ HTML = '''<!DOCTYPE html>
         }
         .dot.loading { animation: pulse 1.5s infinite; }
         @keyframes pulse { 50% { opacity: 0.3; } }
-        .status-details {
-            margin-top: 8px;
-            padding-top: 8px;
-            border-top: 1px solid var(--border);
-            font-size: 10px;
-            line-height: 1.6;
-            color: var(--text3);
-        }
         
         /* Main Area */
         .main {
@@ -546,18 +1044,18 @@ HTML = '''<!DOCTYPE html>
             background: var(--bg);
         }
         .header {
-            padding: 12px 24px;
+            padding: 10px 20px;
             border-bottom: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
             background: var(--bg2);
         }
-        .header-title { font-size: 13px; color: var(--text2); font-weight: 500; }
+        .header-title { font-size: 12px; color: var(--text2); font-weight: 500; }
         .badge {
-            padding: 5px 12px;
+            padding: 4px 10px;
             background: var(--bg3);
-            border-radius: 16px;
+            border-radius: 12px;
             font-size: 10px;
             color: var(--text3);
             font-weight: 500;
@@ -568,7 +1066,7 @@ HTML = '''<!DOCTYPE html>
         .chat {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 20px;
             -webkit-user-select: text;
             user-select: text;
         }
@@ -583,44 +1081,44 @@ HTML = '''<!DOCTYPE html>
             text-align: center;
         }
         .welcome-icon {
-            width: 72px;
-            height: 72px;
+            width: 64px;
+            height: 64px;
             background: linear-gradient(135deg, var(--accent), var(--accent2));
-            border-radius: 20px;
+            border-radius: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 20px;
+            margin-bottom: 16px;
             box-shadow: 0 8px 32px rgba(0, 212, 170, 0.25);
         }
-        .welcome-icon svg { width: 36px; height: 36px; fill: var(--bg); }
+        .welcome-icon svg { width: 32px; height: 32px; fill: var(--bg); }
         .welcome h1 {
-            font-size: 28px;
-            margin-bottom: 10px;
+            font-size: 26px;
+            margin-bottom: 8px;
             background: linear-gradient(90deg, var(--accent), #7c72ff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             font-weight: 700;
         }
-        .welcome p { color: var(--text2); max-width: 460px; line-height: 1.6; font-size: 13px; }
-        .welcome-stats { display: flex; gap: 12px; margin-top: 28px; }
+        .welcome p { color: var(--text2); max-width: 440px; line-height: 1.6; font-size: 13px; }
+        .welcome-stats { display: flex; gap: 10px; margin-top: 24px; }
         .stat {
             background: var(--bg3);
-            padding: 14px 20px;
+            padding: 12px 18px;
             border-radius: 10px;
             text-align: center;
             border: 1px solid var(--border);
-            min-width: 90px;
+            min-width: 80px;
         }
-        .stat-val { font-size: 24px; font-weight: 700; color: var(--accent); }
+        .stat-val { font-size: 22px; font-weight: 700; color: var(--accent); }
         .stat-lbl { font-size: 9px; color: var(--text3); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
         
         /* Messages */
         .msg {
             display: flex;
             gap: 12px;
-            margin-bottom: 20px;
-            max-width: 850px;
+            margin-bottom: 18px;
+            max-width: 820px;
             animation: fadeIn 0.25s ease;
         }
         .msg.user {
@@ -635,8 +1133,8 @@ HTML = '''<!DOCTYPE html>
         @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         
         .avatar {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             border-radius: 8px;
             display: flex;
             align-items: center;
@@ -647,14 +1145,14 @@ HTML = '''<!DOCTYPE html>
         }
         .msg.user .avatar { background: var(--bg3); color: var(--text2); border: 1px solid var(--border); }
         .msg.assistant .avatar { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: var(--bg); }
-        .msg.assistant .avatar svg { width: 16px; height: 16px; fill: var(--bg); }
+        .msg.assistant .avatar svg { width: 14px; height: 14px; fill: var(--bg); }
         
         .msg-body { flex: 1; min-width: 0; }
         .msg.user .msg-body { text-align: right; }
         
         .msg-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
         .msg.user .msg-header { justify-content: flex-end; }
-        .msg-role { font-size: 12px; font-weight: 600; color: var(--text2); }
+        .msg-role { font-size: 11px; font-weight: 600; color: var(--text2); }
         
         .reg { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
         .reg.sama { background: rgba(88, 166, 255, 0.15); color: var(--sama); }
@@ -710,12 +1208,12 @@ HTML = '''<!DOCTYPE html>
         
         /* Input Area */
         .input-area {
-            padding: 16px 24px 20px;
+            padding: 14px 20px 18px;
             border-top: 1px solid var(--border);
             background: var(--bg2);
         }
         .input-box {
-            max-width: 850px;
+            max-width: 820px;
             margin: 0 auto;
             display: flex;
             gap: 10px;
@@ -799,24 +1297,25 @@ HTML = '''<!DOCTYPE html>
                     <div class="logo-sub">SAMA · CMA · EN/AR</div>
                 </div>
             </div>
+            <button class="new-chat-btn" id="newChatBtn">
+                <svg viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Chat
+            </button>
+        </div>
+        <div class="chat-history" id="chatHistory">
+            <div class="history-title">Recent Chats</div>
         </div>
         <div class="examples">
-            <div class="ex-title">English Examples</div>
+            <div class="ex-title">Try These</div>
             <div class="ex" data-q="What are the licensing fees for finance companies?"><span>Licensing fees</span><span class="tag sama">SAMA</span></div>
             <div class="ex" data-q="What is a qualified investor?"><span>Qualified investor</span><span class="tag cma">CMA</span></div>
-            <div class="ex" data-q="What are the requirements for sukuk issuance?"><span>Sukuk issuance</span><span class="tag cma">CMA</span></div>
-            <div class="ex" data-q="What are the capital requirements for finance companies?"><span>Capital requirements</span><span class="tag sama">SAMA</span></div>
             <div class="lang-section">
-                <div class="ex-title">أمثلة عربية</div>
                 <div class="ex" data-q="ما هي رسوم ترخيص شركات التمويل؟"><span class="tag sama">SAMA</span><span>رسوم الترخيص</span></div>
                 <div class="ex" data-q="ما هو المستثمر المؤهل؟"><span class="tag cma">CMA</span><span>المستثمر المؤهل</span></div>
-                <div class="ex" data-q="ما هي متطلبات إصدار الصكوك؟"><span class="tag cma">CMA</span><span>متطلبات الصكوك</span></div>
-                <div class="ex" data-q="ما هي متطلبات رأس المال لشركات التمويل؟"><span class="tag sama">SAMA</span><span>متطلبات رأس المال</span></div>
             </div>
         </div>
         <div class="status">
             <div class="status-row"><div class="dot loading" id="dot"></div><span id="status">Initializing...</span></div>
-            <div class="status-details" id="details"></div>
         </div>
     </aside>
     <main class="main">
@@ -848,11 +1347,66 @@ HTML = '''<!DOCTYPE html>
         </div>
     </main>
     <div class="overlay" id="overlay"><div class="spinner"></div><div class="overlay-text">Loading TadqeeqAI...</div></div>
+    
+    <!-- Delete Confirmation Modal -->
+    <div class="modal-overlay" id="deleteModal">
+        <div class="modal">
+            <div class="modal-title">Delete Chat</div>
+            <div class="modal-text">Are you sure you want to delete this chat? This action is permanent and cannot be undone.</div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="cancelDelete">Cancel</button>
+                <button class="modal-btn delete" id="confirmDelete">Delete</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         const chat=document.getElementById('chat'),input=document.getElementById('input'),sendBtn=document.getElementById('send'),dot=document.getElementById('dot'),statusEl=document.getElementById('status');
-        let ready=false,busy=false;
+        const chatHistoryEl=document.getElementById('chatHistory');
+        const deleteModal=document.getElementById('deleteModal');
+        let ready=false,busy=false,currentChatId=null,chatToDelete=null;
         
         marked.setOptions({breaks:true,gfm:true});
+        
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', (e) => {
+            if(!e.target.closest('.history-item-menu') && !e.target.closest('.dropdown')) {
+                document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show'));
+            }
+        });
+        
+        // Modal handlers
+        document.getElementById('cancelDelete').addEventListener('click', () => {
+            deleteModal.classList.remove('show');
+            chatToDelete = null;
+        });
+        
+        document.getElementById('confirmDelete').addEventListener('click', async () => {
+            if(chatToDelete) {
+                await deleteChat(chatToDelete);
+                deleteModal.classList.remove('show');
+                chatToDelete = null;
+            }
+        });
+        
+        async function deleteChat(chatId) {
+            try {
+                const r = await window.pywebview.api.delete_chat(chatId);
+                if(r.success) {
+                    renderChatHistory(r.chats);
+                    if(chatId === currentChatId) {
+                        await newChat(true);
+                    }
+                }
+            } catch(e) {
+                console.error('deleteChat error:', e);
+            }
+        }
+        
+        function showDeleteConfirm(chatId) {
+            chatToDelete = chatId;
+            deleteModal.classList.add('show');
+        }
         
         async function init(){
             try{
@@ -861,7 +1415,6 @@ HTML = '''<!DOCTYPE html>
                     ready=true;
                     dot.classList.remove('loading');
                     statusEl.textContent=r.total+' articles indexed';
-                    document.getElementById('details').innerHTML='SAMA: '+r.sama+' ('+r.sama_en+' EN, '+r.sama_ar+' AR)<br>CMA: '+r.cma+' ('+r.cma_en+' EN, '+r.cma_ar+' AR)';
                     document.getElementById('s-sama').textContent=r.sama;
                     document.getElementById('s-cma').textContent=r.cma;
                     document.getElementById('s-total').textContent=r.total;
@@ -869,6 +1422,10 @@ HTML = '''<!DOCTYPE html>
                     sendBtn.disabled=false;
                     document.getElementById('overlay').classList.add('hidden');
                     input.focus();
+                    // Load chat history
+                    if(r.chats) renderChatHistory(r.chats);
+                    // Start new chat
+                    await newChat(false);
                 }else{
                     statusEl.textContent='Error: '+r.message;
                 }
@@ -878,13 +1435,96 @@ HTML = '''<!DOCTYPE html>
         }
         window.addEventListener('pywebviewready',init);
         
+        function renderChatHistory(chats){
+            let html='<div class="history-title">Recent Chats</div>';
+            chats.forEach(c=>{
+                const isActive=c.id===currentChatId?' active':'';
+                html+=`<div class="history-item${isActive}" data-id="${c.id}">
+                    <span class="history-item-text">${escHtml(c.preview)}</span>
+                    <div class="history-item-menu" data-id="${c.id}">
+                        <svg viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
+                    </div>
+                    <div class="dropdown" data-id="${c.id}">
+                        <div class="dropdown-item delete-chat" data-id="${c.id}">
+                            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14"/></svg>
+                            Delete
+                        </div>
+                    </div>
+                </div>`;
+            });
+            chatHistoryEl.innerHTML=html;
+            
+            // Add click handlers for chat items
+            chatHistoryEl.querySelectorAll('.history-item').forEach(el=>{
+                el.addEventListener('click',(e)=>{
+                    if(!e.target.closest('.history-item-menu') && !e.target.closest('.dropdown')) {
+                        loadChat(el.dataset.id);
+                    }
+                });
+            });
+            
+            // Add click handlers for menu buttons
+            chatHistoryEl.querySelectorAll('.history-item-menu').forEach(el=>{
+                el.addEventListener('click',(e)=>{
+                    e.stopPropagation();
+                    const dropdown = el.nextElementSibling;
+                    document.querySelectorAll('.dropdown.show').forEach(d => {
+                        if(d !== dropdown) d.classList.remove('show');
+                    });
+                    dropdown.classList.toggle('show');
+                });
+            });
+            
+            // Add click handlers for delete buttons
+            chatHistoryEl.querySelectorAll('.delete-chat').forEach(el=>{
+                el.addEventListener('click',(e)=>{
+                    e.stopPropagation();
+                    showDeleteConfirm(el.dataset.id);
+                });
+            });
+        }
+        
+        async function newChat(updateUI=true){
+            try{
+                const r=await window.pywebview.api.new_chat();
+                currentChatId=r.id;
+                if(updateUI){
+                    // Clear chat
+                    chat.innerHTML='<div class="welcome" id="welcome"><div class="welcome-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" fill="none"/></svg></div><h1>TadqeeqAI</h1><p>Bilingual AI assistant for Saudi Arabian financial regulations.</p></div>';
+                    renderChatHistory(r.chats);
+                }
+            }catch(e){
+                console.error('newChat error:',e);
+            }
+        }
+        
+        async function loadChat(chatId){
+            try{
+                const r=await window.pywebview.api.load_chat(chatId);
+                currentChatId=chatId;
+                // Clear and render messages
+                chat.innerHTML='';
+                r.messages.forEach(m=>{
+                    addMsg(m.role,m.content,m.sources||null,m.regulator||null);
+                });
+                // Update active state
+                chatHistoryEl.querySelectorAll('.history-item').forEach(el=>{
+                    el.classList.toggle('active',el.dataset.id===chatId);
+                });
+            }catch(e){
+                console.error('loadChat error:',e);
+            }
+        }
+        
+        document.getElementById('newChatBtn').addEventListener('click',()=>newChat(true));
+        
         input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,120)+'px';});
         input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
         sendBtn.addEventListener('click',send);
         document.querySelectorAll('.ex').forEach(el=>{el.addEventListener('click',()=>{input.value=el.dataset.q;send();});});
         
-        function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
-        function renderMd(text){try{return marked.parse(text);}catch(e){return esc(text);}}
+        function escHtml(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+        function renderMd(text){try{return marked.parse(text);}catch(e){return escHtml(text);}}
         function isArabic(text){return /[\u0600-\u06FF]/.test(text)&&(text.match(/[\u0600-\u06FF]/g)||[]).length>text.length*0.3;}
         
         const logoSvg='<svg viewBox="0 0 24 24" fill="none"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" fill="none"/></svg>';
@@ -897,10 +1537,10 @@ HTML = '''<!DOCTYPE html>
             let srcHtml='';
             if(sources&&sources.length){
                 srcHtml='<div class="sources"><div class="src-title">Sources</div>';
-                sources.forEach(s=>{srcHtml+='<span class="src">'+esc(s.article)+'</span>';});
+                sources.forEach(s=>{srcHtml+='<span class="src">'+escHtml(s.article)+'</span>';});
                 srcHtml+='</div>';
             }
-            const textHtml=role==='assistant'?renderMd(text):esc(text);
+            const textHtml=role==='assistant'?renderMd(text):escHtml(text);
             const rtlClass=isArabic(text)?' rtl':'';
             const avatarContent=role==='user'?'You':logoSvg;
             div.innerHTML='<div class="avatar">'+avatarContent+'</div><div class="msg-body"><div class="msg-header"><span class="msg-role">'+(role==='user'?'You':'TadqeeqAI')+'</span>'+regHtml+'</div><div class="msg-text'+rtlClass+'">'+textHtml+'</div>'+srcHtml+'</div>';
@@ -932,6 +1572,9 @@ HTML = '''<!DOCTYPE html>
                 const r=await window.pywebview.api.query(q);
                 document.getElementById('loading')?.remove();
                 addMsg('assistant',r.answer,r.sources,r.regulator);
+                // Refresh chat history
+                const chats=await window.pywebview.api.get_chats();
+                renderChatHistory(chats.chats);
             }catch(e){
                 document.getElementById('loading')?.remove();
                 addMsg('assistant','An error occurred while processing your request.',null,null);
@@ -947,10 +1590,11 @@ HTML = '''<!DOCTYPE html>
 
 if __name__ == '__main__':
     print("\n" + "="*50)
-    print("   TADQEEQAI v2.0")
+    print("   TADQEEQAI v2.1")
     print("   Hybrid Search: BM25 + Semantic")
     print("   SAMA + CMA · English + Arabic")
+    print("   Chat History · Follow-up Support")
     print("="*50 + "\n")
     api = API()
-    window = webview.create_window('TadqeeqAI v2.0', html=HTML, js_api=api, width=1200, height=800, min_size=(900,600), background_color='#0f1419', text_select=True)
+    window = webview.create_window('TadqeeqAI v2.1', html=HTML, js_api=api, width=1200, height=800, min_size=(900,600), background_color='#0f1419', text_select=True)
     webview.start(debug=False)
