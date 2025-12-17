@@ -5,7 +5,7 @@
 A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-backed answers to regulatory compliance questions for Saudi Arabian Islamic finance laws in **both English and Arabic**.
 
 <p align="center">
-  <img src="images/welcome_screen.png" alt="TadqeeqAI Welcome Screen" width="800"/>
+  <img src="images/welcome_screen_updated.png" alt="TadqeeqAI Welcome Screen" width="800"/>
 </p>
 
 ---
