@@ -1,20 +1,27 @@
 """
-TadqeeqAI v2.1
+TadqeeqAI v2.2
 ==============
 Bilingual RAG system for Saudi Arabian financial regulations.
 SAMA + CMA · English + Arabic
 
-v2.1 Features:
+Features:
+- Hybrid search: BM25 + Semantic (multilingual-e5-base)
 - Chat history with persistent storage
-- New Chat button
-- Improved prompts with dynamic closings
 - Follow-up support (simplify, examples)
 - Domain-restricted responses
-- Auto-start Ollama (Intel ipex-llm)
+- Auto-start Ollama (hidden, auto-shutdown)
+
+v2.2 Additions:
+- Document upload & analysis (PDF, DOCX)
+- Regulatory compliance checker
+- Chat export (Markdown, PDF)
+- Drag & drop file upload
+- Gemini-style input bar
 
 Prerequisites:
     1. Ensure chroma_db_v2 and bm25_index.pkl exist
-    2. Ollama will be started automatically
+    2. Install: pip install PyMuPDF python-docx reportlab
+    3. Ollama with aya:8b model
 """
 
 import json
@@ -24,8 +31,15 @@ import os
 import subprocess
 import time
 import uuid
+import warnings
+import logging
 from datetime import datetime
 from pathlib import Path
+
+# Suppress pywebview accessibility warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+logging.getLogger('pywebview').setLevel(logging.ERROR)
+
 import chromadb
 from sentence_transformers import SentenceTransformer
 from rank_bm25 import BM25Okapi
@@ -33,12 +47,41 @@ import ollama
 import numpy as np
 import webview
 
+import base64
+import tempfile
+from io import BytesIO
+
+# Document processing (install: pip install PyMuPDF python-docx reportlab)
+try:
+    import fitz  # PyMuPDF
+    HAS_PYMUPDF = True
+except ImportError:
+    HAS_PYMUPDF = False
+
+try:
+    from docx import Document as DocxDocument
+    HAS_DOCX = True
+except ImportError:
+    HAS_DOCX = False
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.lib.enums import TA_CENTER
+    HAS_REPORTLAB = True
+except ImportError:
+    HAS_REPORTLAB = False
+
 # Configuration
 CHROMA_PATH = "./chroma_db_v2"
 BM25_PATH = "./bm25_index.pkl"
 DOCS_PATH = "./documents.json"
 CHAT_HISTORY_PATH = "./chat_history"
 EMBEDDING_MODEL = 'intfloat/multilingual-e5-base'
+MAX_DOCUMENT_PAGES = 50
 
 # LLM Model Options:
 # - 'aya:8b'       : Best for Arabic, no Chinese leak, follows instructions well
@@ -49,40 +92,82 @@ LLM_MODEL = 'aya:8b'
 # Ensure chat history directory exists
 Path(CHAT_HISTORY_PATH).mkdir(exist_ok=True)
 
+# Global Ollama process reference
+OLLAMA_PROCESS = None
+
 
 def start_ollama():
-    """Start Ollama server if not already running."""
-    try:
-        result = subprocess.run(['ollama', 'list'], capture_output=True, timeout=5)
-        if result.returncode == 0:
-            print("  ✓ Ollama is already running")
-            return True
-    except:
-        pass
+    """Start Ollama server hidden, preventing GUI app from launching."""
+    import atexit
+    global OLLAMA_PROCESS
     
-    print("  Starting Ollama...")
+    print("  Checking Ollama...")
+    
+    if os.name == 'nt':
+        # Windows: Kill ALL Ollama processes first (GUI app, server, everything)
+        # This ensures we start fresh with our hidden instance
+        for proc_name in ['ollama app.exe', 'Ollama.exe', 'ollama.exe']:
+            subprocess.run(
+                ['taskkill', '/F', '/IM', proc_name],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+        time.sleep(2)  # Wait for processes to fully terminate
+    
+    print("  Starting Ollama (hidden)...")
     try:
-        # On Windows, use START /B to run in background without blocking
         if os.name == 'nt':
-            subprocess.Popen(
-                'start /B ollama serve',
-                shell=True,
+            # Windows: Start ollama serve with completely hidden window
+            # Use shell=False and specify full environment to prevent GUI trigger
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW | subprocess.STARTF_USESTDHANDLES
+            startupinfo.wShowWindow = 0  # SW_HIDE
+            
+            # Find ollama.exe path (usually in user's AppData or Program Files)
+            ollama_paths = [
+                os.path.expandvars(r'%LOCALAPPDATA%\Programs\Ollama\ollama.exe'),
+                os.path.expandvars(r'%LOCALAPPDATA%\Ollama\ollama.exe'),
+                r'C:\Program Files\Ollama\ollama.exe',
+                'ollama'  # Fallback to PATH
+            ]
+            
+            ollama_exe = 'ollama'
+            for path in ollama_paths:
+                if os.path.exists(path):
+                    ollama_exe = path
+                    break
+            
+            OLLAMA_PROCESS = subprocess.Popen(
+                [ollama_exe, 'serve'],
                 stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
             )
         else:
-            subprocess.Popen(
+            # Linux/Mac
+            OLLAMA_PROCESS = subprocess.Popen(
                 ['ollama', 'serve'],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL
             )
         
+        # Register cleanup
+        atexit.register(stop_ollama)
+        
+        # Wait for server to be ready
         for i in range(30):
             time.sleep(1)
             try:
-                result = subprocess.run(['ollama', 'list'], capture_output=True, timeout=5)
-                if result.returncode == 0:
-                    print("  ✓ Ollama started successfully")
+                # Use requests or simple socket check instead of subprocess
+                # to avoid triggering GUI
+                import socket
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                result = sock.connect_ex(('127.0.0.1', 11434))
+                sock.close()
+                if result == 0:
+                    print("  ✓ Ollama started (hidden)")
                     return True
             except:
                 pass
@@ -96,9 +181,36 @@ def start_ollama():
         return False
 
 
+def stop_ollama():
+    """Stop Ollama when app closes."""
+    global OLLAMA_PROCESS
+    if OLLAMA_PROCESS:
+        try:
+            OLLAMA_PROCESS.terminate()
+            OLLAMA_PROCESS.wait(timeout=5)
+        except:
+            try:
+                OLLAMA_PROCESS.kill()
+            except:
+                pass
+        OLLAMA_PROCESS = None
+    
+    # Also kill any remaining ollama processes on Windows
+    if os.name == 'nt':
+        for proc_name in ['ollama.exe']:
+            subprocess.run(
+                ['taskkill', '/F', '/IM', proc_name],
+                capture_output=True,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+
+
 class ChatHistory:
     """Manages persistent chat history."""
     
+    def get_messages(self):
+        return self.current_messages
+
     def __init__(self):
         self.history_path = Path(CHAT_HISTORY_PATH)
         self.current_chat_id = None
@@ -192,6 +304,330 @@ class ChatHistory:
                 self.current_messages = []
             return True
         return False
+    
+class DocumentProcessor:
+    """Process uploaded documents (PDF, DOCX)."""
+    
+    def __init__(self):
+        self.current_document = None
+        self.current_text = None
+        self.current_filename = None
+        self.current_page_count = 0
+    
+    def process_file(self, file_path=None, file_data=None, filename=None):
+        """Process a document file. Accepts either file path or base64 data."""
+        try:
+            if file_data:
+                data = base64.b64decode(file_data)
+                ext = filename.lower().split('.')[-1] if filename else ''
+            elif file_path:
+                with open(file_path, 'rb') as f:
+                    data = f.read()
+                ext = file_path.lower().split('.')[-1]
+                filename = os.path.basename(file_path)
+            else:
+                return {'error': 'No file provided'}
+            
+            if ext == 'pdf':
+                return self._process_pdf(data, filename)
+            elif ext in ['docx', 'doc']:
+                return self._process_docx(data, filename)
+            else:
+                return {'error': f'Unsupported file type: {ext}'}
+                
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def _process_pdf(self, data, filename):
+        if not HAS_PYMUPDF:
+            return {'error': 'PDF support not available. Install PyMuPDF: pip install PyMuPDF'}
+        
+        try:
+            doc = fitz.open(stream=data, filetype="pdf")
+            
+            if doc.page_count > MAX_DOCUMENT_PAGES:
+                return {'error': f'Document too large. Maximum {MAX_DOCUMENT_PAGES} pages allowed.'}
+            
+            text_parts = []
+            for page_num, page in enumerate(doc):
+                text = page.get_text()
+                if text.strip():
+                    text_parts.append(f"[Page {page_num + 1}]\n{text}")
+            
+            full_text = "\n\n".join(text_parts)
+            
+            self.current_document = doc
+            self.current_text = full_text
+            self.current_filename = filename
+            self.current_page_count = doc.page_count
+            
+            summary = self._generate_quick_summary(full_text, filename)
+            
+            return {
+                'success': True,
+                'filename': filename,
+                'pages': doc.page_count,
+                'chars': len(full_text),
+                'summary': summary
+            }
+            
+        except Exception as e:
+            return {'error': f'Failed to process PDF: {str(e)}'}
+    
+    def _process_docx(self, data, filename):
+        if not HAS_DOCX:
+            return {'error': 'DOCX support not available. Install python-docx: pip install python-docx'}
+        
+        try:
+            doc = DocxDocument(BytesIO(data))
+            
+            text_parts = []
+            for para in doc.paragraphs:
+                if para.text.strip():
+                    text_parts.append(para.text)
+            
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = ' | '.join(cell.text.strip() for cell in row.cells if cell.text.strip())
+                    if row_text:
+                        text_parts.append(row_text)
+            
+            full_text = "\n\n".join(text_parts)
+            
+            self.current_text = full_text
+            self.current_filename = filename
+            self.current_page_count = len(text_parts) // 20 + 1
+            
+            summary = self._generate_quick_summary(full_text, filename)
+            
+            return {
+                'success': True,
+                'filename': filename,
+                'pages': self.current_page_count,
+                'chars': len(full_text),
+                'summary': summary
+            }
+            
+        except Exception as e:
+            return {'error': f'Failed to process DOCX: {str(e)}'}
+    
+    def _generate_quick_summary(self, text, filename):
+        text_lower = text.lower()
+        
+        doc_type = "Document"
+        if any(kw in text_lower for kw in ['fund', 'investment', 'investor', 'subscription']):
+            doc_type = "Investment Fund Document"
+        elif any(kw in text_lower for kw in ['sukuk', 'bond', 'debt instrument']):
+            doc_type = "Sukuk/Debt Instrument Document"
+        elif any(kw in text_lower for kw in ['license', 'licensing', 'authorization']):
+            doc_type = "Licensing Document"
+        elif any(kw in text_lower for kw in ['contract', 'agreement', 'party', 'parties']):
+            doc_type = "Contract/Agreement"
+        elif any(kw in text_lower for kw in ['prospectus', 'offering', 'securities']):
+            doc_type = "Securities Prospectus"
+        
+        has_arabic = bool(re.search(r'[\u0600-\u06FF]', text))
+        
+        return {'type': doc_type, 'has_arabic': has_arabic, 'word_count': len(text.split())}
+    
+    def get_current_text(self):
+        return self.current_text
+    
+    def clear(self):
+        self.current_document = None
+        self.current_text = None
+        self.current_filename = None
+        self.current_page_count = 0
+
+
+class ComplianceChecker:
+    """Check documents for regulatory compliance."""
+    
+    COMPLIANCE_CATEGORIES = {
+        'qualified_investor': {
+            'name': 'Qualified Investor Definition',
+            'keywords': ['qualified investor', 'accredited investor', 'مستثمر مؤهل'],
+            'regulation': 'CMA Rules on Offer of Securities, Article 15',
+            'description': 'Documents offering securities must define qualified investor criteria'
+        },
+        'risk_disclosure': {
+            'name': 'Risk Disclosure',
+            'keywords': ['risk', 'risks', 'risk factors', 'مخاطر'],
+            'regulation': 'CMA Rules on Offer of Securities, Article 22',
+            'description': 'Offering documents must include comprehensive risk disclosures'
+        },
+        'capital_requirements': {
+            'name': 'Capital Requirements',
+            'keywords': ['minimum capital', 'paid-up capital', 'رأس المال'],
+            'regulation': 'Finance Companies Control Law, Article 5',
+            'description': 'Finance companies must meet minimum capital requirements'
+        },
+        'license_reference': {
+            'name': 'Licensing Information',
+            'keywords': ['license', 'licensed', 'CMA', 'SAMA', 'ترخيص'],
+            'regulation': 'Capital Market Law, Article 3',
+            'description': 'Financial activities require proper licensing'
+        },
+        'fund_terms': {
+            'name': 'Fund Terms & Conditions',
+            'keywords': ['terms and conditions', 'subscription', 'management fee', 'شروط وأحكام'],
+            'regulation': 'Investment Funds Regulations, Article 20',
+            'description': 'Investment funds must clearly state terms and fees'
+        },
+        'disclosure_requirements': {
+            'name': 'Disclosure Requirements',
+            'keywords': ['disclosure', 'material information', 'إفصاح'],
+            'regulation': 'CMA Rules on Offer of Securities, Article 30',
+            'description': 'Issuers must disclose all material information'
+        }
+    }
+    
+    def check_compliance(self, text, filename=None):
+        results = {
+            'filename': filename or 'Document',
+            'timestamp': datetime.now().isoformat(),
+            'checks': [],
+            'summary': {'compliant': 0, 'warnings': 0, 'missing': 0}
+        }
+        
+        text_lower = text.lower()
+        
+        for category_id, category in self.COMPLIANCE_CATEGORIES.items():
+            found_keywords = [kw for kw in category['keywords'] if kw.lower() in text_lower or kw in text]
+            
+            if found_keywords:
+                status = 'compliant'
+                results['summary']['compliant'] += 1
+                detail = f"Found references: {', '.join(found_keywords[:3])}"
+            else:
+                status = 'warning'
+                results['summary']['warnings'] += 1
+                detail = f"Consider adding {category['name'].lower()} information"
+            
+            results['checks'].append({
+                'id': category_id,
+                'name': category['name'],
+                'status': status,
+                'regulation': category['regulation'],
+                'description': category['description'],
+                'detail': detail
+            })
+        
+        total = results['summary']['compliant'] + results['summary']['warnings']
+        results['score'] = round((results['summary']['compliant'] / total) * 100) if total > 0 else 100
+        
+        return results
+
+
+class ChatExporter:
+    """Export chat conversations to Markdown and PDF."""
+    
+    def _sanitize_for_pdf(self, text):
+        """Clean text for ReportLab PDF - remove markdown and escape XML."""
+        import html
+        # First escape any existing HTML/XML entities
+        text = html.escape(text)
+        # Remove markdown bold
+        text = re.sub(r'\*\*([^*]+)\*\*', r'\1', text)
+        # Remove markdown italic
+        text = re.sub(r'\*([^*]+)\*', r'\1', text)
+        # Remove markdown headers
+        text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+        # Convert bullet points to dashes
+        text = re.sub(r'^[\-\*]\s+', '- ', text, flags=re.MULTILINE)
+        # Remove any remaining problematic characters
+        text = text.replace('<', '(').replace('>', ')')
+        return text
+    
+    def export_markdown(self, messages, filename=None):
+        if not messages:
+            return None, "No messages to export"
+        
+        md_lines = [
+            "# TadqeeqAI Chat Export",
+            f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "", "---", ""
+        ]
+        
+        for msg in messages:
+            role = "User" if msg['role'] == 'user' else "TadqeeqAI"
+            md_lines.extend([f"## {role}", "", msg['content'], ""])
+            
+            if msg.get('sources'):
+                md_lines.append("**Sources:**")
+                for src in msg['sources']:
+                    md_lines.append(f"- {src['article']} ({src['document']})")
+                md_lines.append("")
+            
+            md_lines.extend(["---", ""])
+        
+        md_lines.extend(["", "*Generated by TadqeeqAI v2.2*"])
+        return "\n".join(md_lines), None
+    
+    def export_pdf(self, messages, filename=None):
+        if not messages:
+            return None, "No messages to export"
+        
+        if not HAS_REPORTLAB:
+            return None, "PDF export not available. Install reportlab: pip install reportlab"
+        
+        try:
+            buffer = BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+            
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=24, spaceAfter=20, textColor=colors.HexColor('#00d4aa'))
+            normal_style = ParagraphStyle('CustomNormal', parent=styles['Normal'], fontSize=11, leading=16)
+            role_style = ParagraphStyle('CustomRole', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#00d4aa'), fontName='Helvetica-Bold', spaceBefore=15)
+            footer_style = ParagraphStyle('CustomFooter', parent=styles['Normal'], fontSize=8, textColor=colors.grey, alignment=TA_CENTER)
+            
+            story = [
+                Paragraph("TadqeeqAI Chat Export", title_style),
+                Paragraph(f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}", styles['Normal']),
+                HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e0e0e0')),
+                Spacer(1, 20)
+            ]
+            
+            for msg in messages:
+                role = "You" if msg['role'] == 'user' else "TadqeeqAI"
+                story.append(Paragraph(role, role_style))
+                
+                # Sanitize content for PDF
+                content = self._sanitize_for_pdf(msg['content'])
+                # Split into paragraphs and add each
+                paragraphs = content.split('\n')
+                for para in paragraphs:
+                    para = para.strip()
+                    if para:
+                        try:
+                            story.append(Paragraph(para, normal_style))
+                        except:
+                            # If paragraph still fails, use plain text
+                            story.append(Paragraph(para.encode('ascii', 'ignore').decode(), normal_style))
+                
+                story.append(Spacer(1, 10))
+                
+                # Add sources if present
+                if msg.get('sources'):
+                    sources_text = "Sources: " + ", ".join([s['article'] for s in msg['sources'][:3]])
+                    story.append(Paragraph(sources_text, ParagraphStyle('Sources', parent=styles['Normal'], fontSize=9, textColor=colors.grey)))
+                    story.append(Spacer(1, 5))
+            
+            story.extend([
+                Spacer(1, 30), 
+                HRFlowable(width="100%", thickness=1, color=colors.HexColor('#e0e0e0')), 
+                Spacer(1, 10), 
+                Paragraph("Generated by TadqeeqAI v2.2", footer_style)
+            ])
+            
+            doc.build(story)
+            pdf_data = buffer.getvalue()
+            buffer.close()
+            
+            return base64.b64encode(pdf_data).decode('utf-8'), None
+            
+        except Exception as e:
+            return None, f"PDF export failed: {str(e)}"
 
 
 class TadqeeqRAG:
@@ -205,13 +641,14 @@ class TadqeeqRAG:
         return cls._instance
     
     def __init__(self):
-        print("Loading TadqeeqAI v2.1...")
+        print("Loading TadqeeqAI v2.2...")
         
         # Start Ollama first
+        print("  Step 1: Starting Ollama...")
         start_ollama()
         
         # Load documents
-        print("  Loading documents...")
+        print("  Step 2: Loading documents...")
         with open(DOCS_PATH, 'r', encoding='utf-8') as f:
             self.documents = json.load(f)
         
@@ -229,7 +666,7 @@ class TadqeeqRAG:
         print(f"    ✓ {self.total} articles (SAMA: {self.sama_count}, CMA: {self.cma_count})")
         
         # Load BM25 index
-        print("  Loading BM25 index...")
+        print("  Step 3: Loading BM25...")
         with open(BM25_PATH, 'rb') as f:
             self.bm25 = pickle.load(f)
         print("    ✓ BM25 ready")
@@ -252,8 +689,12 @@ class TadqeeqRAG:
         
         # Chat history
         self.chat_history = ChatHistory()
+
+        self.doc_processor = DocumentProcessor()
+        self.compliance_checker = ComplianceChecker()
+        self.chat_exporter = ChatExporter()
         
-        print("\n✓ TadqeeqAI v2.1 Ready!\n")
+        print("\n✓ TadqeeqAI v2.2 Ready!\n")
     
     def _warmup_llm(self):
         try:
@@ -412,7 +853,7 @@ class TadqeeqRAG:
                     'language': meta.get('language', '')}, 'score': 1/(1+dist), 'source': 'semantic'})
         return output[:top_k]
     
-    def hybrid_search(self, query, n_results=5):
+    def hybrid_search(self, query, n_results=3):
         """Hybrid search with English Bridge strategy."""
         user_language = self.detect_language(query)
         regulator = self.detect_regulator(query)
@@ -664,12 +1105,134 @@ Please ask a question related to these topics."""
 class API:
     def __init__(self):
         self.rag = None
+        self.window = None  # Will be set after window creation
+    
+    def set_window(self, window):
+        self.window = window
+    
+    def upload_document(self, file_data, filename):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        return self.rag.doc_processor.process_file(file_data=file_data, filename=filename)
+    
+    def run_compliance_check(self):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        text = self.rag.doc_processor.get_current_text()
+        if not text:
+            return {'error': 'No document uploaded'}
+        return self.rag.compliance_checker.check_compliance(text, self.rag.doc_processor.current_filename)
+    
+    def clear_document(self):
+        if not self.rag:
+            self.rag = TadqeeqRAG.get_instance()
+        self.rag.doc_processor.clear()
+        return {'success': True}
+    
+    def export_markdown(self):
+        print("API.export_markdown() called")
+        try:
+            if not self.rag:
+                self.rag = TadqeeqRAG.get_instance()
+            messages = self.rag.chat_history.get_messages()
+            print(f"  Messages count: {len(messages) if messages else 0}")
+            if not messages:
+                return {'error': 'No messages to export. Start a conversation first.'}
+            md_content, error = self.rag.chat_exporter.export_markdown(messages)
+            print(f"  Export result - content length: {len(md_content) if md_content else 0}, error: {error}")
+            if error:
+                return {'error': error}
+            
+            # Use file dialog to save
+            filename = f'tadqeeq_chat_{datetime.now().strftime("%Y%m%d_%H%M")}.md'
+            if self.window:
+                try:
+                    save_path = self.window.create_file_dialog(
+                        webview.SAVE_DIALOG,
+                        save_filename=filename,
+                        file_types=('Markdown Files (*.md)',)
+                    )
+                except:
+                    # Fallback for newer pywebview versions
+                    save_path = self.window.create_file_dialog(
+                        dialog_type=webview.SAVE_DIALOG,
+                        save_filename=filename,
+                        file_types=('Markdown Files (*.md)',)
+                    )
+                if save_path:
+                    # save_path is a tuple, get first element
+                    path = save_path if isinstance(save_path, str) else save_path[0] if save_path else None
+                    if path:
+                        with open(path, 'w', encoding='utf-8') as f:
+                            f.write(md_content)
+                        return {'success': True, 'path': path}
+                return {'error': 'Export cancelled'}
+            else:
+                # Fallback: save to current directory
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(md_content)
+                return {'success': True, 'path': filename}
+        except Exception as e:
+            print(f"  Export error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'error': str(e)}
+    
+    def export_pdf(self):
+        print("API.export_pdf() called")
+        try:
+            if not self.rag:
+                self.rag = TadqeeqRAG.get_instance()
+            messages = self.rag.chat_history.get_messages()
+            print(f"  Messages count: {len(messages) if messages else 0}")
+            if not messages:
+                return {'error': 'No messages to export. Start a conversation first.'}
+            pdf_data, error = self.rag.chat_exporter.export_pdf(messages)
+            print(f"  Export result - content length: {len(pdf_data) if pdf_data else 0}, error: {error}")
+            if error:
+                return {'error': error}
+            
+            # Decode base64 PDF data
+            pdf_bytes = base64.b64decode(pdf_data)
+            
+            # Use file dialog to save
+            filename = f'tadqeeq_chat_{datetime.now().strftime("%Y%m%d_%H%M")}.pdf'
+            if self.window:
+                try:
+                    save_path = self.window.create_file_dialog(
+                        webview.SAVE_DIALOG,
+                        save_filename=filename,
+                        file_types=('PDF Files (*.pdf)',)
+                    )
+                except:
+                    save_path = self.window.create_file_dialog(
+                        dialog_type=webview.SAVE_DIALOG,
+                        save_filename=filename,
+                        file_types=('PDF Files (*.pdf)',)
+                    )
+                if save_path:
+                    path = save_path if isinstance(save_path, str) else save_path[0] if save_path else None
+                    if path:
+                        with open(path, 'wb') as f:
+                            f.write(pdf_bytes)
+                        return {'success': True, 'path': path}
+                return {'error': 'Export cancelled'}
+            else:
+                # Fallback: save to current directory
+                with open(filename, 'wb') as f:
+                    f.write(pdf_bytes)
+                return {'success': True, 'path': filename}
+        except Exception as e:
+            print(f"  Export error: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'error': str(e)}
     
     def initialize(self):
         try:
-            print("API.initialize() called...")
+            print("1. API.initialize() called...")
             self.rag = TadqeeqRAG.get_instance()
-            print("RAG instance created successfully")
+            print("2. RAG instance created successfully")
             return {
                 'status': 'ready',
                 'total': self.rag.total,
@@ -710,6 +1273,8 @@ class API:
     def new_chat(self):
         if not self.rag:
             self.rag = TadqeeqRAG.get_instance()
+        # Clear any uploaded document when starting new chat
+        self.rag.doc_processor.clear()
         chat_id = self.rag.chat_history.new_chat()
         return {'id': chat_id, 'chats': self.rag.chat_history.get_recent_chats()}
     
@@ -773,6 +1338,89 @@ HTML = '''<!DOCTYPE html>
         ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
         
         ::selection { background: var(--accent); color: var(--bg); }
+        
+        /* V2.2: Header Actions */
+        .header-actions { display: flex; align-items: center; gap: 12px; }
+        .header-btn {
+            display: flex; align-items: center; gap: 6px; padding: 6px 12px;
+            background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text2); font-size: 12px; cursor: pointer; transition: all 0.15s ease;
+        }
+        .header-btn:hover { background: var(--bg4); color: var(--text); border-color: var(--accent); }
+        .header-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
+        
+        /* V2.2: Export Menu */
+        .export-menu {
+            position: absolute; right: 0; top: 100%; margin-top: 4px;
+            background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+            padding: 4px; z-index: 100; display: none; min-width: 160px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .export-menu.show { display: block; }
+        .export-item {
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            font-size: 12px; color: var(--text); border-radius: 4px;
+            cursor: pointer; transition: all 0.15s ease;
+        }
+        .export-item:hover { background: var(--bg4); }
+        .export-item svg { width: 14px; height: 14px; stroke: currentColor; fill: none; }
+        
+        /* V2.2: Drop Zone Overlay */
+        .drop-overlay {
+            position: absolute; inset: 0; background: rgba(0, 212, 170, 0.1);
+            border: 2px dashed var(--accent); display: none; align-items: center;
+            justify-content: center; z-index: 50; pointer-events: none;
+        }
+        .drop-overlay.active { display: flex; pointer-events: auto; }
+        .drop-overlay-content {
+            background: var(--bg2); padding: 40px 60px; border-radius: 16px;
+            text-align: center; border: 1px solid var(--accent); pointer-events: none;
+        }
+        .drop-overlay-content svg { width: 48px; height: 48px; stroke: var(--accent); margin-bottom: 16px; }
+        .drop-overlay-content h3 { color: var(--text); margin-bottom: 8px; }
+        .drop-overlay-content p { color: var(--text2); font-size: 13px; }
+        
+        /* V2.2: Document Badge */
+        .doc-badge {
+            display: flex; align-items: center; gap: 10px;
+            background: var(--bg3); padding: 10px 14px; border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        .doc-badge svg { width: 18px; height: 18px; stroke: var(--accent); fill: none; flex-shrink: 0; }
+        .doc-badge-info { flex: 1; min-width: 0; }
+        .doc-badge-name { font-size: 13px; color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .doc-badge-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+        .doc-badge-actions { display: flex; gap: 6px; }
+        .doc-badge-btn {
+            padding: 5px 10px; border-radius: 5px; font-size: 11px;
+            cursor: pointer; border: 1px solid var(--border); transition: all 0.15s ease;
+        }
+        .doc-badge-btn.check { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 500; }
+        .doc-badge-btn.check:hover { opacity: 0.9; }
+        .doc-badge-btn.clear { background: transparent; color: var(--text2); }
+        .doc-badge-btn.clear:hover { background: var(--bg4); color: var(--danger); }
+        
+        /* V2.2: Compliance Report */
+        .compliance-report {
+            background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+            padding: 16px; margin: 12px 0; max-width: 600px;
+        }
+        .compliance-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
+        .compliance-title { font-size: 14px; font-weight: 600; color: var(--text); }
+        .compliance-score { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .compliance-score.good { background: rgba(63, 185, 80, 0.15); color: var(--cma); }
+        .compliance-score.warning { background: rgba(210, 153, 34, 0.15); color: #d29922; }
+        .compliance-score.bad { background: rgba(248, 81, 73, 0.15); color: var(--danger); }
+        .compliance-item { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .compliance-item:last-child { border-bottom: none; }
+        .compliance-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .compliance-icon.compliant { background: rgba(63, 185, 80, 0.2); color: var(--cma); }
+        .compliance-icon.warning { background: rgba(210, 153, 34, 0.2); color: #d29922; }
+        .compliance-icon svg { width: 12px; height: 12px; stroke: currentColor; fill: none; }
+        .compliance-content { flex: 1; }
+        .compliance-name { font-size: 13px; font-weight: 500; color: var(--text); }
+        .compliance-reg { font-size: 11px; color: var(--text3); margin-top: 2px; }
+        .compliance-detail { font-size: 12px; color: var(--text2); margin-top: 4px; }
         
         /* Sidebar */
         .sidebar {
@@ -1206,9 +1854,9 @@ HTML = '''<!DOCTYPE html>
         .dots span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes bounce { 0%, 80%, 100% { transform: scale(0.7); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
         
-        /* Input Area */
+        /* Input Area - Gemini Style */
         .input-area {
-            padding: 14px 20px 18px;
+            padding: 14px 20px 12px;
             border-top: 1px solid var(--border);
             background: var(--bg2);
         }
@@ -1216,17 +1864,34 @@ HTML = '''<!DOCTYPE html>
             max-width: 820px;
             margin: 0 auto;
             display: flex;
-            gap: 10px;
+            align-items: flex-end;
+            gap: 12px;
             background: var(--bg3);
             border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 10px 14px;
+            border-radius: 24px;
+            padding: 8px 8px 8px 16px;
             transition: all 0.2s ease;
         }
         .input-box:focus-within {
             border-color: var(--accent);
             box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.08);
         }
+        .input-box .attach-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            border: none;
+            background: transparent;
+            color: var(--text2);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+        .input-box .attach-btn:hover { background: var(--bg4); color: var(--accent); }
+        .input-box .attach-btn svg { width: 20px; height: 20px; stroke: currentColor; fill: none; }
         .input-box textarea {
             flex: 1;
             background: transparent;
@@ -1238,25 +1903,33 @@ HTML = '''<!DOCTYPE html>
             outline: none;
             max-height: 120px;
             line-height: 1.5;
-            padding: 4px 0;
+            padding: 8px 0;
+            min-width: 0;
         }
         .input-box textarea::placeholder { color: var(--text3); }
-        .send {
+        .input-box .send {
             background: linear-gradient(135deg, var(--accent), var(--accent2));
             border: none;
-            border-radius: 8px;
+            border-radius: 50%;
             width: 36px;
             height: 36px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            align-self: flex-end;
+            flex-shrink: 0;
             transition: all 0.15s ease;
         }
-        .send:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3); }
-        .send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-        .send svg { width: 16px; height: 16px; fill: var(--bg); }
+        .input-box .send:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3); }
+        .input-box .send:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+        .input-box .send svg { width: 16px; height: 16px; fill: var(--bg); }
+        .input-disclaimer {
+            text-align: center;
+            font-size: 11px;
+            color: var(--text3);
+            margin-top: 8px;
+            opacity: 0.7;
+        }
         
         /* Overlay */
         .overlay {
@@ -1318,11 +1991,37 @@ HTML = '''<!DOCTYPE html>
             <div class="status-row"><div class="dot loading" id="dot"></div><span id="status">Initializing...</span></div>
         </div>
     </aside>
-    <main class="main">
+    <main class="main" style="position: relative;">
         <header class="header">
             <span class="header-title">Saudi Financial Regulations Assistant</span>
-            <div class="badge">Hybrid Search · Aya 8B</div>
+            <div class="header-actions">
+                <div style="position: relative;">
+                    <button class="header-btn" id="exportBtn">
+                        <svg viewBox="0 0 24 24" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        Export
+                    </button>
+                    <div class="export-menu" id="exportMenu">
+                        <div class="export-item" id="exportMd">
+                            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            Markdown (.md)
+                        </div>
+                        <div class="export-item" id="exportPdf">
+                            <svg viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            PDF (.pdf)
+                        </div>
+                    </div>
+                </div>
+                <div class="badge">v2.2 · Hybrid Search · Aya 8B</div>
+            </div>
         </header>
+        <!-- V2.2: Drop Zone Overlay -->
+        <div class="drop-overlay" id="dropOverlay">
+            <div class="drop-overlay-content">
+                <svg viewBox="0 0 24 24" stroke-width="2" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <h3>Drop your document here</h3>
+                <p>PDF or DOCX (max 50 pages)</p>
+            </div>
+        </div>
         <div class="chat" id="chat">
             <div class="welcome" id="welcome">
                 <div class="welcome-icon">
@@ -1340,11 +2039,17 @@ HTML = '''<!DOCTYPE html>
             </div>
         </div>
         <div class="input-area">
+            <div id="docBadge" style="max-width: 820px; margin: 0 auto 10px; display: none;"></div>
             <div class="input-box">
+                <button class="attach-btn" id="attachBtn" title="Upload document">
+                    <svg viewBox="0 0 24 24" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                </button>
                 <textarea id="input" placeholder="Ask about SAMA or CMA regulations..." rows="1" disabled></textarea>
                 <button class="send" id="send" disabled><svg viewBox="0 0 24 24"><path d="M2 21L23 12 2 3 2 10 17 12 2 14z"/></svg></button>
             </div>
+            <div class="input-disclaimer">AI can make mistakes. Please verify important information.</div>
         </div>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.doc" style="display: none;">
     </main>
     <div class="overlay" id="overlay"><div class="spinner"></div><div class="overlay-text">Loading TadqeeqAI...</div></div>
     
@@ -1360,11 +2065,25 @@ HTML = '''<!DOCTYPE html>
         </div>
     </div>
     
+    <!-- Error Modal -->
+    <div class="modal-overlay" id="errorModal">
+        <div class="modal">
+            <div class="modal-title" id="errorTitle">Error</div>
+            <div class="modal-text" id="errorText"></div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="errorClose">OK</button>
+            </div>
+        </div>
+    </div>
+    
     <script>
         const chat=document.getElementById('chat'),input=document.getElementById('input'),sendBtn=document.getElementById('send'),dot=document.getElementById('dot'),statusEl=document.getElementById('status');
         const chatHistoryEl=document.getElementById('chatHistory');
         const deleteModal=document.getElementById('deleteModal');
         let ready=false,busy=false,currentChatId=null,chatToDelete=null;
+        
+        // Store stats globally so they persist
+        let appStats = { sama: '-', cma: '-', total: '-' };
         
         marked.setOptions({breaks:true,gfm:true});
         
@@ -1415,6 +2134,10 @@ HTML = '''<!DOCTYPE html>
                     ready=true;
                     dot.classList.remove('loading');
                     statusEl.textContent=r.total+' articles indexed';
+                    // Store stats globally
+                    appStats.sama = r.sama;
+                    appStats.cma = r.cma;
+                    appStats.total = r.total;
                     document.getElementById('s-sama').textContent=r.sama;
                     document.getElementById('s-cma').textContent=r.cma;
                     document.getElementById('s-total').textContent=r.total;
@@ -1489,9 +2212,12 @@ HTML = '''<!DOCTYPE html>
                 const r=await window.pywebview.api.new_chat();
                 currentChatId=r.id;
                 if(updateUI){
-                    // Clear chat
-                    chat.innerHTML='<div class="welcome" id="welcome"><div class="welcome-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" fill="none"/></svg></div><h1>TadqeeqAI</h1><p>Bilingual AI assistant for Saudi Arabian financial regulations.</p></div>';
+                    // Restore full welcome screen with stats from global appStats
+                    chat.innerHTML='<div class="welcome" id="welcome"><div class="welcome-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" fill="none"/></svg></div><h1>TadqeeqAI</h1><p>Bilingual AI assistant for Saudi Arabian financial regulations. Query SAMA and CMA documents in English or Arabic with accurate, cited responses.</p><div class="welcome-stats"><div class="stat"><div class="stat-val" id="s-sama">' + appStats.sama + '</div><div class="stat-lbl">SAMA</div></div><div class="stat"><div class="stat-val" id="s-cma">' + appStats.cma + '</div><div class="stat-lbl">CMA</div></div><div class="stat"><div class="stat-val" id="s-total">' + appStats.total + '</div><div class="stat-lbl">Articles</div></div></div></div>';
                     renderChatHistory(r.chats);
+                    // Clear document badge
+                    const docBadge = document.getElementById('docBadge');
+                    if (docBadge) { docBadge.style.display = 'none'; docBadge.innerHTML = ''; }
                 }
             }catch(e){
                 console.error('newChat error:',e);
@@ -1584,17 +2310,220 @@ HTML = '''<!DOCTYPE html>
             input.disabled=false;
             input.focus();
         }
+        
+        // Error modal helper
+        function showError(title, message) {
+            const modal = document.getElementById('errorModal');
+            document.getElementById('errorTitle').textContent = title;
+            document.getElementById('errorText').textContent = message;
+            modal.classList.add('show');
+        }
+        document.getElementById('errorClose').addEventListener('click', () => {
+            document.getElementById('errorModal').classList.remove('show');
+        });
+        
+        // ========== V2.2 FEATURES ==========
+        (function initV22() {
+            // Get elements
+            const exportBtn = document.getElementById('exportBtn');
+            const exportMenu = document.getElementById('exportMenu');
+            const exportMd = document.getElementById('exportMd');
+            const exportPdf = document.getElementById('exportPdf');
+            const dropOverlay = document.getElementById('dropOverlay');
+            const fileInput = document.getElementById('fileInput');
+            const attachBtn = document.getElementById('attachBtn');
+            const docBadge = document.getElementById('docBadge');
+            const mainEl = document.querySelector('.main');
+            
+            // Export menu toggle
+            if (exportBtn && exportMenu) {
+                exportBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    exportMenu.classList.toggle('show');
+                });
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('#exportBtn') && !e.target.closest('#exportMenu')) {
+                        exportMenu.classList.remove('show');
+                    }
+                });
+            }
+            
+            // Export Markdown
+            if (exportMd) {
+                exportMd.addEventListener('click', async () => {
+                    if (exportMenu) exportMenu.classList.remove('show');
+                    try {
+                        console.log('Exporting markdown...');
+                        const r = await window.pywebview.api.export_markdown();
+                        console.log('Export result:', r);
+                        if (r.error) { 
+                            showError('Export Failed', r.error); 
+                            return; 
+                        }
+                        if (r.success) {
+                            // File was saved successfully
+                            showError('Export Complete', 'Chat exported to: ' + r.path);
+                        }
+                    } catch (e) { 
+                        console.error('Export error:', e);
+                        showError('Export Failed', e.message || 'Unknown error'); 
+                    }
+                });
+            }
+            
+            // Export PDF
+            if (exportPdf) {
+                exportPdf.addEventListener('click', async () => {
+                    if (exportMenu) exportMenu.classList.remove('show');
+                    try {
+                        console.log('Exporting PDF...');
+                        const r = await window.pywebview.api.export_pdf();
+                        console.log('Export result:', r);
+                        if (r.error) { 
+                            showError('Export Failed', r.error); 
+                            return; 
+                        }
+                        if (r.success) {
+                            // File was saved successfully
+                            showError('Export Complete', 'Chat exported to: ' + r.path);
+                        }
+                    } catch (e) { 
+                        console.error('Export error:', e);
+                        showError('Export Failed', e.message || 'Unknown error'); 
+                    }
+                });
+            }
+            
+            // Drag and drop
+            if (mainEl && dropOverlay) {
+                mainEl.addEventListener('dragenter', (e) => { e.preventDefault(); dropOverlay.classList.add('active'); });
+                mainEl.addEventListener('dragover', (e) => { e.preventDefault(); dropOverlay.classList.add('active'); });
+                dropOverlay.addEventListener('dragleave', (e) => { e.preventDefault(); dropOverlay.classList.remove('active'); });
+                dropOverlay.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropOverlay.classList.remove('active');
+                    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+                });
+            }
+            
+            // Attach button
+            if (attachBtn && fileInput) {
+                attachBtn.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', (e) => {
+                    if (e.target.files[0]) handleFile(e.target.files[0]);
+                });
+            }
+            
+            // Helper functions
+            function downloadFile(content, filename, type) {
+                const blob = new Blob([content], { type });
+                downloadBlob(blob, filename);
+            }
+            
+            function downloadBlob(blob, filename) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            
+            function b64toBlob(b64Data, contentType) {
+                const byteChars = atob(b64Data);
+                const byteArrays = [];
+                for (let offset = 0; offset < byteChars.length; offset += 512) {
+                    const slice = byteChars.slice(offset, offset + 512);
+                    const byteNumbers = new Array(slice.length);
+                    for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
+                    byteArrays.push(new Uint8Array(byteNumbers));
+                }
+                return new Blob(byteArrays, { type: contentType });
+            }
+            
+            async function handleFile(file) {
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (!['pdf', 'docx', 'doc'].includes(ext)) {
+                    showError('Invalid File', 'Please upload a PDF or DOCX file.');
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    try {
+                        const base64 = e.target.result.split(',')[1];
+                        const r = await window.pywebview.api.upload_document(base64, file.name);
+                        if (r.error) { showError('Upload Failed', r.error); return; }
+                        showDocBadge(r);
+                        const w = document.getElementById('welcome');
+                        if (w) w.style.display = 'none';
+                        addMsg('assistant', '📄 **Document loaded:** ' + r.filename + '\\n\\n**Pages:** ' + r.pages + ' | **Characters:** ' + r.chars.toLocaleString() + '\\n**Type:** ' + r.summary.type + (r.summary.has_arabic ? '\\n**Language:** Contains Arabic text' : '') + '\\n\\nYou can now ask questions about this document or click **Check Compliance** to run an automated scan.', null, null);
+                    } catch (err) { showError('Upload Failed', err.message); }
+                };
+                reader.readAsDataURL(file);
+            }
+            
+            function showDocBadge(info) {
+                if (!docBadge) return;
+                docBadge.innerHTML = '<div class="doc-badge"><svg viewBox="0 0 24 24" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><div class="doc-badge-info"><div class="doc-badge-name">' + escHtml(info.filename) + '</div><div class="doc-badge-meta">' + info.pages + ' pages \\u00b7 ' + info.summary.type + '</div></div><div class="doc-badge-actions"><button class="doc-badge-btn check" onclick="window.runComplianceCheck()">Check Compliance</button><button class="doc-badge-btn clear" onclick="window.clearDocument()">\\u2715</button></div></div>';
+                docBadge.style.display = 'block';
+            }
+            
+            // Global functions for onclick handlers
+            window.clearDocument = async function() {
+                try {
+                    await window.pywebview.api.clear_document();
+                    if (docBadge) { docBadge.style.display = 'none'; docBadge.innerHTML = ''; }
+                } catch (e) { console.error('Clear failed:', e); }
+            };
+            
+            window.runComplianceCheck = async function() {
+                if (busy) return;
+                busy = true;
+                addMsg('assistant', '🔍 Running compliance check...', null, null);
+                try {
+                    const r = await window.pywebview.api.run_compliance_check();
+                    const loading = document.getElementById('loading');
+                    if (loading) loading.remove();
+                    const msgs = chat.querySelectorAll('.msg.assistant');
+                    if (msgs.length) msgs[msgs.length - 1].remove();
+                    if (r.error) { addMsg('assistant', '❌ ' + r.error, null, null); }
+                    else { showComplianceReport(r); }
+                } catch (e) { addMsg('assistant', '❌ Error: ' + e.message, null, null); }
+                busy = false;
+            };
+            
+            function showComplianceReport(r) {
+                const scoreClass = r.score >= 80 ? 'good' : r.score >= 50 ? 'warning' : 'bad';
+                let itemsHtml = '';
+                r.checks.forEach(c => {
+                    const iconClass = c.status === 'compliant' ? 'compliant' : 'warning';
+                    const icon = c.status === 'compliant'
+                        ? '<svg viewBox="0 0 24 24" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>'
+                        : '<svg viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>';
+                    itemsHtml += '<div class="compliance-item"><div class="compliance-icon ' + iconClass + '">' + icon + '</div><div class="compliance-content"><div class="compliance-name">' + c.name + '</div><div class="compliance-reg">' + c.regulation + '</div><div class="compliance-detail">' + c.detail + '</div></div></div>';
+                });
+                const reportHtml = '<div class="compliance-report"><div class="compliance-header"><div class="compliance-title">Compliance Report: ' + escHtml(r.filename) + '</div><div class="compliance-score ' + scoreClass + '">' + r.score + '% Compliant</div></div>' + itemsHtml + '</div>';
+                const div = document.createElement('div');
+                div.innerHTML = reportHtml;
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
+            }
+        })();
     </script>
 </body>
 </html>'''
 
+
 if __name__ == '__main__':
     print("\n" + "="*50)
-    print("   TADQEEQAI v2.1")
+    print("   TADQEEQAI v2.2")
     print("   Hybrid Search: BM25 + Semantic")
     print("   SAMA + CMA · English + Arabic")
-    print("   Chat History · Follow-up Support")
+    print("   Document Analysis · Export")
     print("="*50 + "\n")
     api = API()
-    window = webview.create_window('TadqeeqAI v2.1', html=HTML, js_api=api, width=1200, height=800, min_size=(900,600), background_color='#0f1419', text_select=True)
+    window = webview.create_window('TadqeeqAI v2.2', html=HTML, js_api=api, width=1200, height=800, min_size=(900,600), background_color='#0f1419', text_select=True)
+    api.set_window(window)
     webview.start(debug=False)

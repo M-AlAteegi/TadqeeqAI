@@ -14,13 +14,23 @@ A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-b
 
 | Feature | Description |
 |---------|-------------|
-| 🌍 **Bilingual** | Query in English or Arabic - responses in the same language |
+| 🌐 **Bilingual** | Query in English or Arabic - responses in the same language |
 | 🔍 **Hybrid Search** | BM25 + Semantic search with Reciprocal Rank Fusion |
 | 📊 **Dual Regulators** | SAMA + CMA documents (1,350+ articles) |
 | 💬 **Chat History** | Persistent conversations with delete functionality |
 | 🎯 **Smart Detection** | Auto-routes queries to relevant regulator |
 | 🤖 **Follow-up Support** | Ask for simplification or examples |
 | 🔒 **Fully Local** | All data stays on your machine |
+
+### 🆕 New in v2.2
+
+| Feature | Description |
+|---------|-------------|
+| 📄 **Document Analysis** | Upload PDF/DOCX files for compliance checking |
+| ✅ **Compliance Checker** | Automated regulatory compliance scanning |
+| 📥 **Chat Export** | Export conversations to Markdown or PDF |
+| 🖱️ **Drag & Drop** | Simply drag files into the app |
+| 💅 **Gemini-Style UI** | Modern input bar with bilateral button layout |
 
 ---
 
@@ -34,6 +44,11 @@ A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-b
 ### Arabic Query Response (RTL Support)
 <p align="center">
   <img src="images/query_response_ar.png" alt="Arabic Query Response" width="800"/>
+</p>
+
+### Document Analysis & Compliance Check
+<p align="center">
+  <img src="images/document_analysis.png" alt="Document Analysis" width="800"/>
 </p>
 
 ---
@@ -60,6 +75,12 @@ ollama pull aya:8b
 
 # Run the application
 python main.py
+```
+
+### Additional Dependencies for v2.2
+
+```bash
+pip install PyMuPDF python-docx reportlab
 ```
 
 ---
@@ -98,6 +119,9 @@ python main.py
 | **Keyword Search** | BM25 (rank_bm25) |
 | **LLM** | Aya 8B via Ollama |
 | **Desktop UI** | PyWebView |
+| **PDF Processing** | PyMuPDF (fitz) |
+| **DOCX Processing** | python-docx |
+| **PDF Export** | ReportLab |
 
 ---
 
@@ -118,6 +142,24 @@ After any response, you can ask:
 - "Simplify this"
 - "Give me an example"
 - "وضح أكثر" (Explain more)
+
+---
+
+## 📄 Document Analysis (v2.2)
+
+### How to Use
+1. **Upload**: Click the 📎 attach button or drag & drop a PDF/DOCX file
+2. **Analyze**: Ask questions about the uploaded document
+3. **Compliance Check**: Click "Check Compliance" to run automated regulatory scanning
+4. **Export**: Save your chat as Markdown or PDF
+
+### Compliance Categories Checked
+- Capital Requirements
+- Licensing & Registration
+- Disclosure Requirements
+- Governance & Risk Management
+- AML/KYC Compliance
+- Sharia Compliance
 
 ---
 
