@@ -1,21 +1,23 @@
-# TadqeeqAI v2.0 Requirements
+# TadqeeqAI v3.0 Requirements
+# Core dependencies for the RAG system
 
-# Embeddings
-sentence-transformers>=2.2.0
-
-# Vector Database
+# Core RAG
 chromadb>=0.4.0
-
-# LLM
+sentence-transformers>=2.2.0
+rank-bm25>=0.2.2
 ollama>=0.1.0
 
-# Hybrid Search
-rank-bm25>=0.2.2
-numpy>=1.24.0
+# Document Processing
+PyMuPDF>=1.23.0
+python-docx>=0.8.11
+reportlab>=4.0.0
 
 # Desktop UI
 pywebview>=4.0.0
 
-PyMuPDF>=1.23.0
-python-docx>=1.1.0
-reportlab>=4.0.0
+# Utilities
+numpy>=1.24.0
+tqdm>=4.65.0
+
+# Optional for development
+pyinstaller>=5.0.0

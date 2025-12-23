@@ -1,67 +1,87 @@
-# =============================================================================
-# TadqeeqAI .gitignore
-# =============================================================================
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Virtual Environments
-.env
-.venv
-env/
+# Virtual environments
 venv/
+ENV/
+env/
+.venv/
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb
-
-# IDE
+# IDE / Editor
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.project
+.pydevproject
+.settings/
 
-# OS
+# OS generated
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-desktop.ini
 
-# =============================================================================
-# Project Specific - HIDE THESE
-# =============================================================================
-
-# Source data (already embedded in database)
-data/
-
-# Build/development scripts
-build_embeddings.py
-
-# Old/deprecated versions
-main_v2.py
-main_v21.py
-
-# Development files
-PROJECT_CONTEXT.md
-rag_pipeline.py
-
-# Icons
-*.ico
-
-# Chat history (user-specific, not for repo)
+# Application data
+.tadqeeqai/
 chat_history/
+*.log
 
-# =============================================================================
-# KEEP THESE (Do NOT ignore)
-# =============================================================================
-# main.py
-# requirements.txt
-# README.md
-# RELEASE_NOTES.md
-# LICENSE
-# chroma_db_v2/
-# bm25_index.pkl
-# documents.json
-# images/
+# Temporary files
+*.tmp
+*.temp
+*.bak
+
+# Test files (keep samples/ but ignore test outputs)
+test_output/
+*.test.pdf
+*.test.md
+
+# Large model files (if any downloaded locally)
+*.bin
+*.safetensors
+*.gguf
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/
+
+# Environment variables
+.env
+.env.local
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# Keep these (explicitly not ignored)
+!samples/*.pdf
+!images/*.png
+!chroma_db_v2/
+!bm25_index.pkl
+!documents.json

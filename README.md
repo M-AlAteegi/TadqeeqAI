@@ -2,53 +2,77 @@
 
 ### AI-Powered Bilingual Islamic Finance Regulatory Compliance Assistant
 
-A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-backed answers to regulatory compliance questions for Saudi Arabian Islamic finance laws in **both English and Arabic**.
+A sophisticated Retrieval-Augmented Generation (RAG) desktop application that provides accurate, citation-backed answers to regulatory compliance questions for Saudi Arabian Islamic finance laws in **both English and Arabic**.
 
 <p align="center">
-  <img src="images/welcome_screen_updated.png" alt="TadqeeqAI Welcome Screen" width="800"/>
+  <img src="images/welcome_screen.png" alt="TadqeeqAI Welcome Screen" width="800"/>
 </p>
+
+---
+
+## 🎯 What is TadqeeqAI?
+
+**TadqeeqAI** (تدقيق - Arabic for "verification/auditing") is a locally-running AI assistant designed for financial professionals, compliance officers, legal teams, and researchers working with Saudi Arabian financial regulations.
+
+The app indexes **1,350+ regulatory articles** from SAMA (Saudi Central Bank) and CMA (Capital Market Authority) documents, enabling instant, accurate answers with full citations—all while keeping your data completely private on your machine.
 
 ---
 
 ## ✨ Key Features
 
+### 💬 Intelligent Chat Interface
 | Feature | Description |
 |---------|-------------|
-| 🌐 **Bilingual** | Query in English or Arabic - responses in the same language |
-| 🔍 **Hybrid Search** | BM25 + Semantic search with Reciprocal Rank Fusion |
-| 📊 **Dual Regulators** | SAMA + CMA documents (1,350+ articles) |
-| 💬 **Chat History** | Persistent conversations with delete functionality |
-| 🎯 **Smart Detection** | Auto-routes queries to relevant regulator |
-| 🤖 **Follow-up Support** | Ask for simplification or examples |
-| 🔒 **Fully Local** | All data stays on your machine |
+| 🌐 **Bilingual Support** | Query in English or Arabic — responses match your language |
+| 🔍 **Hybrid Search** | BM25 keyword + Semantic vector search with Reciprocal Rank Fusion |
+| 📊 **Dual Regulators** | Covers both SAMA and CMA regulations (1,350+ articles) |
+| 🎯 **Smart Routing** | Auto-detects which regulator's documents to search |
+| 💾 **Chat History** | Persistent conversations with rename/delete functionality |
+| 📤 **Export Options** | Save chats as Markdown (.md) or PDF (.pdf) |
 
-### 🆕 New in v2.2
-
+### 📄 Document Analysis Mode
 | Feature | Description |
 |---------|-------------|
-| 📄 **Document Analysis** | Upload PDF/DOCX files for compliance checking |
-| ✅ **Compliance Checker** | Automated regulatory compliance scanning |
-| 📥 **Chat Export** | Export conversations to Markdown or PDF |
-| 🖱️ **Drag & Drop** | Simply drag files into the app |
-| 💅 **Gemini-Style UI** | Modern input bar with bilateral button layout |
+| 📎 **File Upload** | Drag & drop or click to upload PDF/DOCX documents |
+| ✅ **Compliance Scanner** | Automated audit against 6 regulatory categories |
+| 📋 **Executive Brief** | AI-generated strategic summary with risks & deadlines |
+| 💾 **Report Export** | Save compliance reports and briefs as PDFs |
+
+### 🎨 Modern UI/UX
+| Feature | Description |
+|---------|-------------|
+| 🌙 **Dark/Light Themes** | Beautiful glassmorphic design in both modes |
+| ⚡ **Smooth Animations** | Polished transitions and micro-interactions |
+| 📱 **Responsive Layout** | Collapsible sidebar with fluid resizing |
+| ⌨️ **Keyboard Shortcuts** | Ctrl+N (new chat), Ctrl+/ (focus input), Escape (collapse sidebar) |
 
 ---
 
 ## 🖼️ Screenshots
 
-### English Query Response
+### Chat Interface - English Query
 <p align="center">
   <img src="images/query_response.png" alt="English Query Response" width="800"/>
 </p>
 
-### Arabic Query Response (RTL Support)
+### Chat Interface - Arabic Query (RTL Support)
 <p align="center">
   <img src="images/query_response_ar.png" alt="Arabic Query Response" width="800"/>
 </p>
 
-### Document Analysis & Compliance Check
+### Analysis Mode - Document Loaded
 <p align="center">
-  <img src="images/document_analysis.png" alt="Document Analysis" width="800"/>
+  <img src="images/analysis_mode.png" alt="Analysis Mode" width="800"/>
+</p>
+
+### Compliance Scan Results
+<p align="center">
+  <img src="images/compliance_scan.png" alt="Compliance Scan Results" width="800"/>
+</p>
+
+### Executive Brief Report
+<p align="center">
+  <img src="images/executive_brief.png" alt="Executive Brief" width="800"/>
 </p>
 
 ---
@@ -56,9 +80,9 @@ A Retrieval-Augmented Generation (RAG) system that provides accurate, citation-b
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.12+
-- [Ollama](https://ollama.com/) installed (auto-starts with the app)
-- 8GB+ RAM recommended
+- **Python 3.12+**
+- **[Ollama](https://ollama.com/)** installed and running
+- **8GB+ RAM** recommended
 
 ### Installation
 
@@ -70,43 +94,75 @@ cd TadqeeqAI
 # Install dependencies
 pip install -r requirements.txt
 
-# Download the LLM
+# Download the LLM (Aya 8B - bilingual Arabic/English)
 ollama pull aya:8b
 
 # Run the application
-python main.py
+python app.py
 ```
 
-### Additional Dependencies for v2.2
-
-```bash
-pip install PyMuPDF python-docx reportlab
-```
+### First Launch
+On first run, TadqeeqAI will:
+1. Load the vector database (~10 seconds)
+2. Initialize BM25 search index
+3. Verify Ollama connection
+4. Display the welcome screen when ready
 
 ---
 
 ## 🗂️ Document Coverage
 
-### SAMA Documents (4 Laws)
-| Document | Articles EN | Articles AR |
-|----------|-------------|-------------|
-| Finance Companies Control Law | ✅ | ✅ |
-| Implementing Regulation of Finance Companies | ✅ | ✅ |
-| Real Estate Finance Law | ✅ | ✅ |
-| Implementing Regulation of Real Estate Finance | ✅ | ✅ |
+### SAMA Documents (Saudi Central Bank)
+| Document | Status |
+|----------|--------|
+| Finance Companies Control Law | ✅ EN/AR |
+| Implementing Regulation of Finance Companies | ✅ EN/AR |
+| Real Estate Finance Law | ✅ EN/AR |
+| Implementing Regulation of Real Estate Finance | ✅ EN/AR |
 
-### CMA Documents (7 Regulations)
-| Document | Articles EN | Articles AR |
-|----------|-------------|-------------|
-| Capital Market Law | ✅ | ✅ |
-| Capital Market Institutions Regulations | ✅ | ✅ |
-| Investment Funds Regulations | ✅ | ✅ |
-| Merger and Acquisition Regulations | ✅ | ✅ |
-| Rules on Offer of Securities | ✅ | ✅ |
-| Glossary of Defined Terms | ✅ | ✅ |
-| Law of Systemically Important Financial Institutions | ✅ | ✅ |
+### CMA Documents (Capital Market Authority)
+| Document | Status |
+|----------|--------|
+| Capital Market Law | ✅ EN/AR |
+| Capital Market Institutions Regulations | ✅ EN/AR |
+| Investment Funds Regulations | ✅ EN/AR |
+| Merger and Acquisition Regulations | ✅ EN/AR |
+| Rules on Offer of Securities | ✅ EN/AR |
+| Glossary of Defined Terms | ✅ EN/AR |
+| Law of Systemically Important Financial Institutions | ✅ EN/AR |
 
-**Total: 1,350+ indexed articles across 22 documents**
+**📊 Total: 1,350+ indexed articles across 22 documents (11 EN + 11 AR)**
+
+---
+
+## 📄 Document Analysis Mode
+
+### How to Use
+
+1. **Upload a Document**
+   - Click the 📎 attach button in the input bar, OR
+   - Drag & drop a PDF/DOCX file onto the app
+
+2. **Enter Analysis Mode**
+   - The app switches to Analysis Mode automatically
+   - Your document name appears in the control bar
+
+3. **Choose an Action**
+   - **Scan Compliance**: Run automated regulatory audit
+   - **Executive Brief**: Generate AI strategic summary
+
+4. **Export Results**
+   - Click "Save Report" to download as PDF
+
+### Compliance Categories Scanned
+| Category | What It Checks |
+|----------|----------------|
+| 📜 Capital Requirements | Minimum capital, reserve ratios |
+| 📋 Licensing & Registration | Proper authorizations |
+| 📢 Disclosure Requirements | Transparency obligations |
+| ⚖️ Governance & Risk | Board structure, risk management |
+| 🔒 AML/KYC Compliance | Anti-money laundering measures |
+| ☪️ Sharia Compliance | Islamic finance principles |
 
 ---
 
@@ -114,52 +170,40 @@ pip install PyMuPDF python-docx reportlab
 
 | Component | Technology |
 |-----------|------------|
+| **LLM** | Aya 8B via Ollama (bilingual AR/EN) |
 | **Embeddings** | intfloat/multilingual-e5-base |
 | **Vector Database** | ChromaDB |
 | **Keyword Search** | BM25 (rank_bm25) |
-| **LLM** | Aya 8B via Ollama |
-| **Desktop UI** | PyWebView |
+| **Desktop Framework** | PyWebView |
 | **PDF Processing** | PyMuPDF (fitz) |
 | **DOCX Processing** | python-docx |
-| **PDF Export** | ReportLab |
+| **PDF Generation** | ReportLab |
 
 ---
 
 ## 💡 Example Queries
 
 ### English
-- "What are the licensing fees for finance companies?"
-- "What is a qualified investor?"
-- "What are the requirements for sukuk issuance?"
+```
+What are the licensing fees for finance companies?
+What is a qualified investor under CMA regulations?
+What are the requirements for sukuk issuance?
+Explain the governance requirements for investment funds.
+```
 
 ### Arabic
-- "ما هي رسوم ترخيص شركات التمويل؟"
-- "ما هو المستثمر المؤهل؟"
-- "ما هي متطلبات إصدار الصكوك؟"
+```
+ما هي رسوم ترخيص شركات التمويل؟
+ما هو المستثمر المؤهل؟
+ما هي متطلبات إصدار الصكوك؟
+اشرح متطلبات الحوكمة لصناديق الاستثمار
+```
 
-### Follow-ups
+### Follow-up Queries
 After any response, you can ask:
-- "Simplify this"
+- "Simplify this" / "وضح أكثر"
 - "Give me an example"
-- "وضح أكثر" (Explain more)
-
----
-
-## 📄 Document Analysis (v2.2)
-
-### How to Use
-1. **Upload**: Click the 📎 attach button or drag & drop a PDF/DOCX file
-2. **Analyze**: Ask questions about the uploaded document
-3. **Compliance Check**: Click "Check Compliance" to run automated regulatory scanning
-4. **Export**: Save your chat as Markdown or PDF
-
-### Compliance Categories Checked
-- Capital Requirements
-- Licensing & Registration
-- Disclosure Requirements
-- Governance & Risk Management
-- AML/KYC Compliance
-- Sharia Compliance
+- "What about penalties for non-compliance?"
 
 ---
 
@@ -167,33 +211,95 @@ After any response, you can ask:
 
 ```
 TadqeeqAI/
-├── main.py              # Main application
-├── requirements.txt     # Dependencies
-├── chroma_db_v2/        # Vector database
-├── bm25_index.pkl       # BM25 index
+├── app.py               # Application entry point
+├── backend.py           # Core logic (RAG, search, analysis)
+├── ui.py                # PyWebView UI (HTML/CSS/JS)
+├── requirements.txt     # Python dependencies
+├── bm25_index.pkl       # BM25 search index
 ├── documents.json       # Document metadata
-├── chat_history/        # Saved conversations
-└── images/              # Screenshots
+├── LICENSE              # MIT License
+├── README.md            # This file
+├── RELEASE_NOTES.md     # Version history
+│
+├── chroma_db_v2/        # Vector database
+├── chat_history/        # Saved conversations (JSON)
+├── images/              # Screenshots
+└── samples/             # Sample documents for testing
 ```
+
+---
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl + N` | New Chat |
+| `Ctrl + /` | Focus Input |
+| `Escape` | Collapse Sidebar |
+| `Enter` | Send Message |
+| `Shift + Enter` | New Line in Input |
+
+---
+
+## 🔒 Privacy & Security
+
+- **100% Local Processing**: All data stays on your machine
+- **No Cloud Dependencies**: Works offline after initial setup
+- **No Telemetry**: Zero data collection or tracking
+- **Your Documents Stay Private**: Uploaded files are processed locally and can be cleared
+
+---
+
+## 🐛 Troubleshooting
+
+### Ollama Not Found
+```bash
+# Ensure Ollama is installed and running
+ollama serve
+
+# Verify Aya model is downloaded
+ollama list
+```
+
+### Slow First Response
+The first query may take 10-15 seconds as Ollama loads the model into memory. Subsequent queries are much faster.
+
+### High Memory Usage
+Aya 8B requires ~6GB RAM. Close other applications if you experience slowdowns.
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Additional regulator documents (SADAD, Mada)
+- [ ] Multi-document comparison analysis
+- [ ] Citation linking to original PDFs
+- [ ] Advanced search filters (by regulator, date, category)
+- [ ] API mode for integration with other tools
 
 ---
 
 ## 👤 Author
 
 **Mohammed Alateegi**  
-AI Graduate | Data Science Specialist
+AI Graduate | Data Science & Machine Learning Specialist
 
 [![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/mohammed-alateegi-2853b3248/)
 [![Email](https://img.shields.io/badge/Email-D14836?style=for-the-badge&logo=gmail&logoColor=white)](mailto:m7mdateegi@gmail.com)
+[![GitHub](https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/M-AlAteegi)
 
 ---
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
 <p align="center">
-  <b>Built with ❤️ for Islamic Finance Compliance</b>
+  <b>Built with ❤️ for Islamic Finance Compliance in Saudi Arabia</b>
+  <br><br>
+  <img src="https://img.shields.io/badge/Version-3.0-teal?style=for-the-badge" alt="Version 3.0"/>
+  <img src="https://img.shields.io/badge/Python-3.12+-blue?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.12+"/>
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License"/>
 </p>
