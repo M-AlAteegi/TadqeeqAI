@@ -20,7 +20,7 @@ The app indexes **1,350+ regulatory articles** from SAMA (Saudi Central Bank) an
 
 ## Key Features
 
-### 💬 Intelligent Chat Interface
+### Intelligent Chat Interface
 | Feature | Description |
 |---------|-------------|
 | **Bilingual Support** | Query in English or Arabic — responses match your language |
