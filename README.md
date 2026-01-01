@@ -1,4 +1,4 @@
-# TadqeeqAI 🏛️
+# TadqeeqAI 
 
 ### AI-Powered Bilingual Islamic Finance Regulatory Compliance Assistant
 
@@ -10,7 +10,7 @@ A sophisticated Retrieval-Augmented Generation (RAG) desktop application that pr
 
 ---
 
-## 🎯 What is TadqeeqAI?
+## What is TadqeeqAI?
 
 **TadqeeqAI** (تدقيق - Arabic for "verification/auditing") is a locally-running AI assistant designed for financial professionals, compliance officers, legal teams, and researchers working with Saudi Arabian financial regulations.
 
@@ -18,37 +18,37 @@ The app indexes **1,350+ regulatory articles** from SAMA (Saudi Central Bank) an
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 ### 💬 Intelligent Chat Interface
 | Feature | Description |
 |---------|-------------|
-| 🌐 **Bilingual Support** | Query in English or Arabic — responses match your language |
-| 🔍 **Hybrid Search** | BM25 keyword + Semantic vector search with Reciprocal Rank Fusion |
-| 📊 **Dual Regulators** | Covers both SAMA and CMA regulations (1,350+ articles) |
-| 🎯 **Smart Routing** | Auto-detects which regulator's documents to search |
-| 💾 **Chat History** | Persistent conversations with rename/delete functionality |
-| 📤 **Export Options** | Save chats as Markdown (.md) or PDF (.pdf) |
+| **Bilingual Support** | Query in English or Arabic — responses match your language |
+| **Hybrid Search** | BM25 keyword + Semantic vector search with Reciprocal Rank Fusion |
+| **Dual Regulators** | Covers both SAMA and CMA regulations (1,350+ articles) |
+| **Smart Routing** | Auto-detects which regulator's documents to search |
+| **Chat History** | Persistent conversations with rename/delete functionality |
+| **Export Options** | Save chats as Markdown (.md) or PDF (.pdf) |
 
-### 📄 Document Analysis Mode
+### Document Analysis Mode
 | Feature | Description |
 |---------|-------------|
-| 📎 **File Upload** | Drag & drop or click to upload PDF/DOCX documents |
-| ✅ **Compliance Scanner** | Automated audit against 6 regulatory categories |
-| 📋 **Executive Brief** | AI-generated strategic summary with risks & deadlines |
-| 💾 **Report Export** | Save compliance reports and briefs as PDFs |
+| **File Upload** | Drag & drop or click to upload PDF/DOCX documents |
+| **Compliance Scanner** | Automated audit against 6 regulatory categories |
+| **Executive Brief** | AI-generated strategic summary with risks & deadlines |
+| **Report Export** | Save compliance reports and briefs as PDFs |
 
-### 🎨 Modern UI/UX
+### Modern UI/UX
 | Feature | Description |
 |---------|-------------|
-| 🌙 **Dark/Light Themes** | Beautiful glassmorphic design in both modes |
-| ⚡ **Smooth Animations** | Polished transitions and micro-interactions |
-| 📱 **Responsive Layout** | Collapsible sidebar with fluid resizing |
-| ⌨️ **Keyboard Shortcuts** | Ctrl+N (new chat), Ctrl+/ (focus input), Escape (collapse sidebar) |
+| **Dark/Light Themes** | Beautiful glassmorphic design in both modes |
+| **Smooth Animations** | Polished transitions and micro-interactions |
+| **Responsive Layout** | Collapsible sidebar with fluid resizing |
+| **Keyboard Shortcuts** | Ctrl+N (new chat), Ctrl+/ (focus input), Escape (collapse sidebar) |
 
 ---
 
-## 🖼️ Screenshots
+## Screenshots
 
 ### Chat Interface - English Query
 <p align="center">
@@ -77,7 +77,7 @@ The app indexes **1,350+ regulatory articles** from SAMA (Saudi Central Bank) an
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - **Python 3.12+**
@@ -110,7 +110,7 @@ On first run, TadqeeqAI will:
 
 ---
 
-## 🗂️ Document Coverage
+## Document Coverage
 
 ### SAMA Documents (Saudi Central Bank)
 | Document | Status |
@@ -131,11 +131,11 @@ On first run, TadqeeqAI will:
 | Glossary of Defined Terms | ✅ EN/AR |
 | Law of Systemically Important Financial Institutions | ✅ EN/AR |
 
-**📊 Total: 1,350+ indexed articles across 22 documents (11 EN + 11 AR)**
+** Total: 1,350+ indexed articles across 22 documents (11 EN + 11 AR)**
 
 ---
 
-## 📄 Document Analysis Mode
+## Document Analysis Mode
 
 ### How to Use
 
@@ -157,16 +157,16 @@ On first run, TadqeeqAI will:
 ### Compliance Categories Scanned
 | Category | What It Checks |
 |----------|----------------|
-| 📜 Capital Requirements | Minimum capital, reserve ratios |
-| 📋 Licensing & Registration | Proper authorizations |
-| 📢 Disclosure Requirements | Transparency obligations |
-| ⚖️ Governance & Risk | Board structure, risk management |
-| 🔒 AML/KYC Compliance | Anti-money laundering measures |
-| ☪️ Sharia Compliance | Islamic finance principles |
+| Capital Requirements | Minimum capital, reserve ratios |
+| Licensing & Registration | Proper authorizations |
+| Disclosure Requirements | Transparency obligations |
+| Governance & Risk | Board structure, risk management |
+| AML/KYC Compliance | Anti-money laundering measures |
+| Sharia Compliance | Islamic finance principles |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
@@ -181,7 +181,7 @@ On first run, TadqeeqAI will:
 
 ---
 
-## 💡 Example Queries
+## Example Queries
 
 ### English
 ```
@@ -207,7 +207,7 @@ After any response, you can ask:
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 TadqeeqAI/
@@ -229,7 +229,7 @@ TadqeeqAI/
 
 ---
 
-## ⌨️ Keyboard Shortcuts
+## Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
@@ -241,7 +241,7 @@ TadqeeqAI/
 
 ---
 
-## 🔒 Privacy & Security
+## Privacy & Security
 
 - **100% Local Processing**: All data stays on your machine
 - **No Cloud Dependencies**: Works offline after initial setup
@@ -250,7 +250,7 @@ TadqeeqAI/
 
 ---
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Ollama Not Found
 ```bash
@@ -269,7 +269,7 @@ Aya 8B requires ~6GB RAM. Close other applications if you experience slowdowns.
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 - [ ] Additional regulator documents (SADAD, Mada)
 - [ ] Multi-document comparison analysis
@@ -279,7 +279,7 @@ Aya 8B requires ~6GB RAM. Close other applications if you experience slowdowns.
 
 ---
 
-## 👤 Author
+## Author
 
 **Mohammed Alateegi**  
 AI Graduate | Data Science & Machine Learning Specialist
@@ -290,7 +290,7 @@ AI Graduate | Data Science & Machine Learning Specialist
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
